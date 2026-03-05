@@ -1,40 +1,26 @@
-﻿export function extractYouTubeId(url: string): string | null {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
-    /^[a-zA-Z0-9_-]{11}$/,
-  ]
-  
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match) return match[1] || match[0]
-  }
-  return null
+﻿// src/utils/youtube.ts
+
+/**
+ * Generates a YouTube thumbnail URL for a given video ID.
+ * Falls back to different qualities if maxres isn't available.
+ * @param videoId - The YouTube video ID (e.g., "dQw4w9WgXcQ")
+ * @param quality - Optional: 'maxresdefault', 'hqdefault', 'mqdefault', 'sddefault', 'default'
+ * @returns Full thumbnail URL
+ */
+export function getYouTubeThumbnail(
+  videoId: string,
+  quality: 'maxresdefault' | 'hqdefault' | 'mqdefault' | 'sddefault' | 'default' = 'maxresdefault'
+): string {
+  // Base URL pattern
+  return `https://img.youtube.com/vi/${videoId}/${quality}.jpg`;
 }
 
-export function getYouTubeThumbnail(videoId: string, quality: 'default' | 'hq' | 'mq' | 'sd' | 'maxres' = 'maxres'): string {
-  const qualityMap = {
-    default: 'default',
-    hq: 'hqdefault',
-    mq: 'mqdefault',
-    sd: 'sddefault',
-    maxres: 'maxresdefault',
-  }
-  return \https://img.youtube.com/vi/\/\.jpg\
-}
-
+// Optional: If you had a formatDuration function (mentioned in the error log snippet)
 export function formatDuration(seconds: number): string {
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const secs = seconds % 60
-  
-  if (hours > 0) {
-    return \\:\:\\
-  }
-  return \\:\\
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
-export function formatViewCount(count: number): string {
-  if (count >= 1000000) return \\M\
-  if (count >= 1000) return \\K\
-  return count.toString()
-}
+// If there are other functions in this file, keep them here.
+// This file seems to be a utils module for YouTube-related helpers.
