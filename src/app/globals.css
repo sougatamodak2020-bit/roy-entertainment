@@ -2,114 +2,201 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --bg-primary: #0a0a0f;
+  --bg-secondary: #111114;
+  --accent: #c026d3;
+  --accent-dark: #9f1eb8;
+  --accent-light: #e879f9;
+  --text-primary: #e0e0ff;
+  --text-secondary: #a0a0cc;
+  --border-glass: rgba(192, 38, 211, 0.18);
+  --blur: blur(16px);
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html {
+html, body {
+  height: 100%;
   scroll-behavior: smooth;
 }
 
 body {
-  background-color: #0a0a0b;
-  color: white;
-  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
-  line-height: 1.6;
-  min-height: 100vh;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #050506;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #6d28d9;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #7c3aed;
-}
-
-/* Font classes */
-.font-playfair {
-  font-family: var(--font-playfair), Georgia, serif;
-}
-
-.font-cinzel {
-  font-family: var(--font-cinzel), Georgia, serif;
-}
-
-.font-inter {
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: var(--font-inter), system-ui, sans-serif;
+  line-height: 1.6;
 }
 
-/* Glass effect */
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #050508; }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-light); }
+
+/* Glassmorphism */
 .glass {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(17, 17, 20, 0.7);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--border-glass);
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
 }
 
-/* Gradient text */
+/* Movie card - WIDE & optimized height */
+.movie-card-wrapper {
+  width: 100%;
+  overflow: hidden;
+  border-radius: 16px;
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.movie-card-wrapper:hover {
+  transform: translateY(-12px) scale(1.04);
+  box-shadow: 0 25px 60px rgba(192, 38, 211, 0.35);
+}
+
+.movie-card {
+  aspect-ratio: 16 / 9;
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.movie-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s ease;
+}
+
+.movie-card-wrapper:hover .movie-card img {
+  transform: scale(1.12);
+}
+
+/* Overlay on card */
+.movie-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(10,10,15,0.9) 0%, transparent 60%);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 1.5rem;
+}
+
+.movie-card-wrapper:hover .movie-overlay {
+  opacity: 1;
+}
+
+/* Responsive grid for movie lists */
+.movie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .movie-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+  }
+}
+
+/* Hero height reduced */
+.hero-section {
+  height: 70vh;
+  min-height: 500px;
+  max-height: 800px;
+  position: relative;
+}
+
+/* Other utilities */
 .gradient-text {
-  background: linear-gradient(135deg, #a78bfa 0%, #fcd34d 50%, #a78bfa 100%);
+  background: linear-gradient(90deg, #a78bfa, #c026d3, #7c3aed);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.animate-fade-up {
+  animation: fadeInUp 1s ease-out forwards;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Force full poster visibility when used in watch page */
+.watch-poster img {
+  object-fit: contain !important;
+  background: #000;
+}
+
+/* Make video player look premium */
+.youtube-player-wrapper {
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(192, 38, 211, 0.3);
+  border: 1px solid rgba(192, 38, 211, 0.2);
+}
+
+/* Reduce hero height on mobile */
+@media (max-width: 768px) {
+  .hero-section {
+    height: 55vh;
+    min-height: 400px;
+  }
+}
+
+/* Homepage specific improvements */
+.home-section {
+  padding: 4rem 0;
+}
+
+.home-section-title {
+  font-size: 2.25rem;
+  font-weight: 800;
+  margin-bottom: 2rem;
+  background: linear-gradient(90deg, #a78bfa, #c026d3, #7c3aed);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-/* Container */
-.container {
-  width: 100%;
-  max-width: 1400px;
-  margin-left: auto;
-  margin-right: auto;
-  padding-left: 1rem;
-  padding-right: 1rem;
+.movie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem 1rem;
 }
 
-@media (min-width: 640px) {
-  .container {
-    padding-left: 1.5rem;
-    padding-right: 1.5rem;
+@media (max-width: 640px) {
+  .movie-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+  }
+  .home-section {
+    padding: 2.5rem 0;
+  }
+  .home-section-title {
+    font-size: 1.75rem;
   }
 }
 
-@media (min-width: 1024px) {
-  .container {
-    padding-left: 2rem;
-    padding-right: 2rem;
-  }
+/* Card hover glow */
+.movie-card-wrapper {
+  transition: all 0.4s ease;
 }
 
-/* Line clamp */
-.line-clamp-2 {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* Animations */
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.movie-card-wrapper:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 40px rgba(192, 38, 211, 0.25);
 }
