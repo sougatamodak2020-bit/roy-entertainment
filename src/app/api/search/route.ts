@@ -12,6 +12,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ results: [] })
     }
 
+    const searchTerm = `%${query}%`
+
     const supabase = await createSupabaseServerClient()
     const results: any[] = []
 
@@ -19,7 +21,7 @@ export async function GET(request: NextRequest) {
       const { data: movies } = await supabase
         .from('movies')
         .select('*')
-        .or(\	itle.ilike.%\%,description.ilike.%\%\)
+        .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .limit(limit)
 
       results.push(...(movies?.map(m => ({ ...m, type: 'movie' })) || []))
@@ -29,7 +31,7 @@ export async function GET(request: NextRequest) {
       const { data: series } = await supabase
         .from('series')
         .select('*')
-        .or(\	itle.ilike.%\%,description.ilike.%\%\)
+        .or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .limit(limit)
 
       results.push(...(series?.map(s => ({ ...s, type: 'series' })) || []))
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
       const bTitle = b.title.toLowerCase().includes(query.toLowerCase())
       if (aTitle && !bTitle) return -1
       if (!aTitle && bTitle) return 1
-      return b.rating - a.rating
+      return (b.rating ?? 0) - (a.rating ?? 0)
     })
 
     return NextResponse.json({ results: results.slice(0, limit) })

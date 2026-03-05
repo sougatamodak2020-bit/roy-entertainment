@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         title: 'Sample Movie Title',
         description: 'This is a sample description for the movie.',
-        thumbnail_url: \https://img.youtube.com/vi/\/maxresdefault.jpg\,
+        thumbnail_url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
         duration_seconds: 7200,
         channel_title: 'Roy Entertainment',
         view_count: 1000000,
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     const response = await fetch(
-      \https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=\&key=\\
+      `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&id=${videoId}&key=${apiKey}`
     )
 
     if (!response.ok) {
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       thumbnail_url: snippet.thumbnails?.maxres?.url || snippet.thumbnails?.high?.url,
       duration_seconds,
       channel_title: snippet.channelTitle,
-      view_count: parseInt(statistics.viewCount),
+      view_count: parseInt(statistics.viewCount || '0'),
       publish_date: snippet.publishedAt,
     })
   } catch (error) {

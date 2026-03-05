@@ -41,11 +41,11 @@ export async function POST(request: NextRequest) {
 
 function getRecommendationReason(movie: any, mood?: string): string {
   const reasons = [
-    \Highly rated \ with stellar performances\,
-    \Perfect for your \ mood\,
-    \Critically acclaimed with \ rating\,
-    \Trending among viewers with similar taste\,
-    \Award-winning \ masterpiece\,
+    `Highly rated with stellar performances`,
+    `Perfect for your ${mood || 'mood'}`,
+    `Critically acclaimed with high rating`,
+    `Trending among viewers with similar taste`,
+    `Award-winning masterpiece`,
   ]
   return reasons[Math.floor(Math.random() * reasons.length)]
 }

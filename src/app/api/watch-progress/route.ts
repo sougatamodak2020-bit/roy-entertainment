@@ -50,11 +50,11 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase
       .from('watch_progress')
-      .select(\
+      .select(`
         *,
         movie:movies(*),
         episode:episodes(*, season:seasons(*, series:series(*)))
-      \)
+      `)
       .eq('user_id', userId)
       .eq('completed', false)
       .order('last_watched', { ascending: false })
