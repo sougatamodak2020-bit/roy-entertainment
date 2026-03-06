@@ -1,5 +1,4 @@
 // src/app/(main)/profile/page.tsx
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -8,136 +7,61 @@ import { Footer } from '@/components/layout/Footer'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import Link from 'next/link'
 import Image from 'next/image'
-import { User, Clock, Star, Heart, Play, Loader2 } from 'lucide-react'
+import { User, Clock, Star, Heart, Play } from 'lucide-react'
 import type { Database } from '@/supabase/types'
 
-// Generated types (your latest version)
 type WatchHistoryRow = Database['public']['Tables']['watch_history']['Row']
-type MovieRow = Database['public']['Tables']['movies']['Row']
-type UserRow = Database['public']['Tables']['users']['Row']
-
-// Joined type - movie is single object or null (we force this shape)
-interface WatchHistoryWithMovie extends WatchHistoryRow {
-  movie: MovieRow | null
-}
+type MovieRow        = Database['public']['Tables']['movies']['Row']
+type UserRow        = Database['public']['Tables']['users']['Row']
+interface WatchHistoryWithMovie extends WatchHistoryRow { movie: MovieRow | null }
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<UserRow | null>(null)
+  const [user,         setUser]         = useState<UserRow | null>(null)
   const [watchHistory, setWatchHistory] = useState<WatchHistoryWithMovie[]>([])
-  const [favorites, setFavorites] = useState<MovieRow[]>([])
-  const [stats, setStats] = useState({ watched: 0, favorites: 0, totalTime: 0 })
-  const [activeTab, setActiveTab] = useState<'stats' | 'history' | 'favorites'>('stats')
-  const [loading, setLoading] = useState(true)
+  const [favorites,    setFavorites]    = useState<MovieRow[]>([])
+  const [stats,        setStats]        = useState({ watched: 0, favorites: 0, totalTime: 0 })
+  const [activeTab,    setActiveTab]    = useState<'stats' | 'history' | 'favorites'>('stats')
+  const [loading,      setLoading]      = useState(true)
 
   const supabase = createSupabaseBrowserClient()
 
-  useEffect(() => {
-    loadProfile()
-  }, [])
+  useEffect(() => { loadProfile() }, [])
 
   const loadProfile = async () => {
     setLoading(true)
     try {
-      // Get authenticated user
       const { data: { user: authUser } } = await supabase.auth.getUser()
-      if (!authUser) {
-        window.location.href = '/login'
-        return
-      }
+      if (!authUser) { window.location.href = '/login'; return }
 
-      // Fetch profile from users table
-      const { data: profile } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .single()
-
+      const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single()
       setUser(profile)
 
-      // Stats: completed watches
-      const { count: watchedCount } = await supabase
-        .from('watch_history')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', authUser.id)
-        .eq('completed', true)
+      const { count: watchedCount   } = await supabase.from('watch_history').select('*', { count: 'exact', head: true }).eq('user_id', authUser.id).eq('completed', true)
+      const { count: favoritesCount } = await supabase.from('favorites').select('*', { count: 'exact', head: true }).eq('user_id', authUser.id)
+      const { data:  progressData   } = await supabase.from('watch_history').select('progress_seconds').eq('user_id', authUser.id).eq('completed', true)
 
-      // Favorites count
-      const { count: favoritesCount } = await supabase
-        .from('favorites')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', authUser.id)
+      const totalHours = Math.round((progressData?.reduce((a, c) => a + (c?.progress_seconds ?? 0), 0) ?? 0) / 3600)
+      setStats({ watched: watchedCount ?? 0, favorites: favoritesCount ?? 0, totalTime: totalHours })
 
-      // Total watch time (completed only)
-      const { data: progressData } = await supabase
-        .from('watch_history')
-        .select('progress_seconds')
-        .eq('user_id', authUser.id)
-        .eq('completed', true)
-
-      const totalSeconds = progressData?.reduce((acc, curr) => acc + (curr?.progress_seconds ?? 0), 0) ?? 0
-      const totalTimeHours = Math.round(totalSeconds / 3600)
-
-      setStats({
-        watched: watchedCount ?? 0,
-        favorites: favoritesCount ?? 0,
-        totalTime: totalTimeHours
-      })
-
-      // Watch History - joined with movie
       const { data: historyRaw } = await supabase
         .from('watch_history')
-        .select(`
-          id,
-          progress_seconds,
-          last_watched,
-          completed,
-          movie:movies(*)
-        `)
+        .select('id, progress_seconds, last_watched, completed, movie:movies(*)')
         .eq('user_id', authUser.id)
         .order('last_watched', { ascending: false })
         .limit(20)
 
-      // Double assertion to override Supabase's any[] bug on joins
-      const historyItems = historyRaw as unknown as WatchHistoryWithMovie[]
-
-      // Runtime safety filter
-      const validHistory = historyItems.filter(item => {
-        return (
-          item &&
-          item.id &&
-          item.movie &&
-          typeof item.movie === 'object' &&
-          item.movie !== null &&
-          !Array.isArray(item.movie) // explicit check against array inference bug
-        )
-      })
-
+      const validHistory = (historyRaw as unknown as WatchHistoryWithMovie[]).filter(
+        item => item && item.id && item.movie && typeof item.movie === 'object' && !Array.isArray(item.movie)
+      )
       setWatchHistory(validHistory)
 
-      // Favorites - joined with movie
-      const { data: favRaw } = await supabase
-        .from('favorites')
-        .select(`
-          movie:movies(*)
-        `)
-        .eq('user_id', authUser.id)
-        .limit(20)
-
-      // Double assertion + filter
-      const favItems = favRaw as unknown as { movie: MovieRow | null }[]
-
-      const validFavorites = favItems
+      const { data: favRaw } = await supabase.from('favorites').select('movie:movies(*)').eq('user_id', authUser.id).limit(20)
+      const validFavs = (favRaw as unknown as { movie: MovieRow | null }[])
         .map(f => f.movie)
-        .filter((m): m is MovieRow => 
-          m !== null && 
-          typeof m === 'object' && 
-          m !== null &&
-          !Array.isArray(m)
-        )
-
-      setFavorites(validFavorites)
-    } catch (error) {
-      console.error('Error loading profile:', error)
+        .filter((m): m is MovieRow => m !== null && typeof m === 'object' && !Array.isArray(m))
+      setFavorites(validFavs)
+    } catch (err) {
+      console.error(err)
     } finally {
       setLoading(false)
     }
@@ -145,224 +69,168 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Loader2 style={{ width: 60, height: 60, color: '#8b5cf6', animation: 'spin 1s linear infinite' }} />
+      <div className="loading-screen">
+        <div className="loading-ring" />
+        <p className="loading-text">Loading Profile</p>
       </div>
     )
   }
 
   if (!user) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0b', color: 'white', textAlign: 'center', padding: '4rem' }}>
+      <div style={{ minHeight: '100vh', background: 'var(--bg-void)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', padding: '2rem' }}>
         Please log in to view your profile.
       </div>
     )
   }
 
+  const userName = user.name || user.email?.split('@')[0] || 'User'
+
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom, #0a0a0b, #050506)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-void)' }}>
       <Navigation />
 
-      <main style={{ maxWidth: '1400px', margin: '0 auto', padding: '100px 2rem 4rem', color: 'white' }}>
-        {/* Header */}
-        <div style={{ textAlign: 'center', marginBottom: '4.5rem' }}>
-          <div style={{
-            width: 160,
-            height: 160,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, #7c3aed, #a78bfa, #f59e0b)',
-            margin: '0 auto 1.8rem',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 60px rgba(139,92,246,0.5)'
-          }}>
-            <User style={{ width: 80, height: 80, color: 'white' }} />
+      <main style={{ maxWidth: 1300, margin: '0 auto', padding: 'clamp(5rem, 12vh, 8rem) clamp(1rem, 4vw, 2.5rem) 4rem', color: 'var(--text-primary)' }}>
+
+        {/* Profile header */}
+        <div style={{ textAlign: 'center', marginBottom: '3.5rem' }}>
+          <div className="profile-avatar">
+            <User style={{ width: 56, height: 56, color: 'white' }} />
           </div>
-          <h1 style={{
-            fontSize: 'clamp(2.5rem, 6vw, 3.8rem)',
-            fontWeight: 800,
-            marginBottom: '0.6rem',
-            background: 'linear-gradient(90deg, #fff, #d4d4ff, #f5d5b5)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent'
-          }}>
-            {user.name || user.email?.split('@')[0] || 'User'}
+
+          <h1 style={{ fontFamily: 'Bebas Neue', fontSize: 'clamp(2.2rem, 6vw, 3.5rem)', letterSpacing: '0.04em', marginBottom: '0.5rem' }}>
+            <span className="gradient-text">{userName}</span>
           </h1>
-          <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '1.15rem' }}>
-            {user.role ? `Role: ${user.role.charAt(0).toUpperCase() + user.role.slice(1)} • ` : ''}
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem' }}>
+            {user.role ? `${user.role.charAt(0).toUpperCase() + user.role.slice(1)} · ` : ''}
             Member since {new Date(user.created_at || Date.now()).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
           </p>
         </div>
 
         {/* Tabs */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '3.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '0.6rem', marginBottom: '3rem', flexWrap: 'wrap' }}>
           {(['stats', 'history', 'favorites'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '0.9rem 2.2rem',
-                borderRadius: '50px',
-                background: activeTab === tab ? 'linear-gradient(135deg, #7c3aed, #a78bfa)' : 'rgba(255,255,255,0.06)',
-                color: activeTab === tab ? 'white' : 'rgba(255,255,255,0.75)',
-                border: 'none',
-                fontWeight: 600,
-                fontSize: '1.05rem',
-                cursor: 'pointer',
-                transition: 'all 0.35s ease',
-                boxShadow: activeTab === tab ? '0 0 25px rgba(139,92,246,0.5)' : 'none'
-              }}
+              className={activeTab === tab ? 'btn-fire' : 'btn-ghost'}
+              style={{ padding: '0.7rem 1.75rem', fontSize: '0.9rem' }}
             >
+              {tab === 'stats' ? '📊' : tab === 'history' ? '🕐' : '❤️'}{' '}
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
 
-        {/* Stats Tab */}
+        {/* Stats */}
         {activeTab === 'stats' && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem' }}>
-            <StatCard icon={<Clock size={52} />} value={`${stats.totalTime}h`} label="Total Watched" color="#f59e0b" />
-            <StatCard icon={<Play size={52} />} value={stats.watched.toString()} label="Movies Completed" color="#8b5cf6" />
-            <StatCard icon={<Heart size={52} />} value={stats.favorites.toString()} label="Favorites" color="#ec4899" />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', maxWidth: 900, margin: '0 auto' }}>
+            <StatCard
+              icon={<Clock size={44} style={{ color: 'var(--brand-gold)' }} />}
+              value={`${stats.totalTime}h`}
+              label="Total Watch Time"
+            />
+            <StatCard
+              icon={<Play size={44} style={{ color: 'var(--brand-mid)' }} />}
+              value={stats.watched.toString()}
+              label="Films Completed"
+            />
+            <StatCard
+              icon={<Heart size={44} style={{ color: '#FF6B6B' }} />}
+              value={stats.favorites.toString()}
+              label="Favorites"
+            />
           </div>
         )}
 
-        {/* History Tab */}
+        {/* History */}
         {activeTab === 'history' && (
           <div>
-            <h2 style={{ fontSize: '2.2rem', marginBottom: '2rem', fontWeight: 700 }}>Recently Watched</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.8rem' }}>
-              {watchHistory.length === 0 ? (
-                <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', gridColumn: '1 / -1', padding: '4rem 0' }}>
-                  No watch history yet
-                </p>
-              ) : (
-                watchHistory.map(item => (
-                  <Link key={item.id} href={`/watch/${item.movie?.slug ?? ''}`} style={{ textDecoration: 'none' }}>
-                    <div style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      borderRadius: '18px',
-                      overflow: 'hidden',
-                      transition: 'all 0.4s ease',
-                      border: '1px solid rgba(139,92,246,0.12)',
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translateY(-10px)'
-                      e.currentTarget.style.borderColor = 'rgba(139,92,246,0.6)'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'translateY(0)'
-                      e.currentTarget.style.borderColor = 'rgba(139,92,246,0.12)'
-                    }}>
-                      <div style={{ position: 'relative', aspectRatio: '2/3' }}>
-                        <Image
-                          src={item.movie?.poster_url || '/placeholder-poster.jpg'}
-                          alt={item.movie?.title || 'Movie'}
-                          fill
-                          style={{ objectFit: 'cover' }}
-                          unoptimized
-                        />
-                      </div>
-                      <div style={{ padding: '1.2rem', textAlign: 'center' }}>
-                        <h3 style={{ color: 'white', fontSize: '1.15rem', marginBottom: '0.5rem' }}>
-                          {item.movie?.title || 'Unknown Title'}
-                        </h3>
-                        <p style={{ color: 'rgba(255,255,255,0.65)', fontSize: '0.9rem' }}>
-                          {item.last_watched 
-                            ? new Date(item.last_watched).toLocaleDateString() 
-                            : 'Never'}
-                        </p>
-                      </div>
-                    </div>
-                  </Link>
-                ))
-              )}
-            </div>
+            <h2 style={{ fontFamily: 'Bebas Neue', fontSize: 'clamp(1.5rem, 4vw, 2.2rem)', letterSpacing: '0.05em', marginBottom: '1.5rem' }}>
+              Recently <span className="gradient-text">Watched</span>
+            </h2>
+            {watchHistory.length === 0 ? (
+              <EmptyTabState message="No watch history yet. Start watching something!" />
+            ) : (
+              <div className="movie-grid">
+                {watchHistory.map(item => (
+                  <MiniCard
+                    key={item.id}
+                    href={`/watch/${item.movie?.slug ?? ''}`}
+                    poster={item.movie?.poster_url}
+                    title={item.movie?.title || 'Unknown'}
+                    sub={item.last_watched ? new Date(item.last_watched).toLocaleDateString() : ''}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Favorites Tab */}
+        {/* Favorites */}
         {activeTab === 'favorites' && (
           <div>
-            <h2 style={{ fontSize: '2.2rem', marginBottom: '2rem', fontWeight: 700 }}>Your Favorites</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '1.8rem' }}>
-              {favorites.length === 0 ? (
-                <p style={{ color: 'rgba(255,255,255,0.5)', textAlign: 'center', gridColumn: '1 / -1', padding: '4rem 0' }}>
-                  No favorites yet
-                </p>
-              ) : (
-                favorites.map(movie => (
-                  <Link key={movie.id} href={`/watch/${movie.slug}`} style={{ textDecoration: 'none' }}>
-                    <div style={{
-                      background: 'rgba(255,255,255,0.04)',
-                      borderRadius: '18px',
-                      overflow: 'hidden',
-                      transition: 'all 0.4s ease',
-                      border: '1px solid rgba(139,92,246,0.12)',
-                    }}
-                    onMouseEnter={e => {
-                      e.currentTarget.style.transform = 'translateY(-10px)'
-                      e.currentTarget.style.borderColor = 'rgba(139,92,246,0.6)'
-                    }}
-                    onMouseLeave={e => {
-                      e.currentTarget.style.transform = 'translateY(0)'
-                      e.currentTarget.style.borderColor = 'rgba(139,92,246,0.12)'
-                    }}>
-                      <div style={{ position: 'relative', aspectRatio: '2/3' }}>
-                        <Image
-                          src={movie.poster_url || '/placeholder-poster.jpg'}
-                          alt={movie.title}
-                          fill
-                          style={{ objectFit: 'cover' }}
-                          unoptimized
-                        />
-                      </div>
-                      <div style={{ padding: '1.2rem', textAlign: 'center' }}>
-                        <h3 style={{ color: 'white', fontSize: '1.15rem', marginBottom: '0.5rem' }}>
-                          {movie.title}
-                        </h3>
-                        <p style={{ color: '#fbbf24', fontSize: '0.95rem' }}>
-                          ★ {movie.admin_rating || movie.rating || 'N/A'}
-                        </p>
-                      </div>
-                    </div>
-                  </Link>
-                ))
-              )}
-            </div>
+            <h2 style={{ fontFamily: 'Bebas Neue', fontSize: 'clamp(1.5rem, 4vw, 2.2rem)', letterSpacing: '0.05em', marginBottom: '1.5rem' }}>
+              Your <span className="gradient-text">Favorites</span>
+            </h2>
+            {favorites.length === 0 ? (
+              <EmptyTabState message="No favorites yet. Heart a movie to save it here!" />
+            ) : (
+              <div className="movie-grid">
+                {favorites.map(movie => (
+                  <MiniCard
+                    key={movie.id}
+                    href={`/watch/${movie.slug}`}
+                    poster={movie.poster_url}
+                    title={movie.title}
+                    sub={movie.admin_rating || movie.rating ? `★ ${movie.admin_rating || movie.rating}` : ''}
+                    subColor="var(--brand-gold)"
+                  />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </main>
 
       <Footer />
-
-      <style jsx global>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
     </div>
   )
 }
 
-function StatCard({ icon, value, label, color }: { icon: React.ReactNode; value: string; label: string; color: string }) {
+function StatCard({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
   return (
-    <div style={{
-      background: 'linear-gradient(135deg, rgba(139,92,246,0.12), rgba(245,158,11,0.08))',
-      borderRadius: '24px',
-      padding: '2.8rem 1.8rem',
-      textAlign: 'center',
-      border: '1px solid rgba(139,92,246,0.2)',
-      backdropFilter: 'blur(12px)',
-      transition: 'all 0.4s ease',
-      boxShadow: '0 10px 35px rgba(0,0,0,0.35)'
-    }}
-    onMouseEnter={e => e.currentTarget.style.transform = 'translateY(-12px)'}
-    onMouseLeave={e => e.currentTarget.style.transform = 'translateY(0)'}>
-      <div style={{ color, marginBottom: '1.2rem', opacity: 0.9 }}>{icon}</div>
-      <div style={{ fontSize: '3rem', fontWeight: 800, marginBottom: '0.6rem', color: 'white' }}>{value}</div>
-      <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '1.15rem', fontWeight: 500 }}>{label}</div>
+    <div className="stat-card">
+      <div style={{ marginBottom: '1.1rem' }}>{icon}</div>
+      <div style={{ fontFamily: 'Bebas Neue', fontSize: 'clamp(2.2rem, 5vw, 3rem)', letterSpacing: '0.04em', marginBottom: '0.4rem', color: 'var(--text-primary)' }}>{value}</div>
+      <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', fontWeight: 600 }}>{label}</div>
+    </div>
+  )
+}
+
+function MiniCard({ href, poster, title, sub, subColor }: { href: string; poster?: string | null; title: string; sub?: string; subColor?: string }) {
+  return (
+    <Link href={href} style={{ textDecoration: 'none' }}>
+      <div className="movie-card-wrapper">
+        <div className="movie-card">
+          <Image src={poster || '/placeholder-poster.jpg'} alt={title} fill style={{ objectFit: 'cover' }} unoptimized />
+          <div className="movie-play-btn">
+            <Play style={{ width: 16, height: 16, fill: 'white', color: 'white', marginLeft: 2 }} />
+          </div>
+        </div>
+        <div className="movie-card-info">
+          <p className="movie-card-title">{title}</p>
+          {sub && <p style={{ fontSize: '0.72rem', color: subColor || 'var(--text-muted)', marginTop: 2 }}>{sub}</p>}
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+function EmptyTabState({ message }: { message: string }) {
+  return (
+    <div style={{ textAlign: 'center', padding: '4rem 1rem', color: 'var(--text-muted)' }}>
+      <p style={{ fontSize: '1rem' }}>{message}</p>
     </div>
   )
 }

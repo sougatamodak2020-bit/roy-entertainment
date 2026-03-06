@@ -1,37 +1,36 @@
 ﻿'use client'
 
 import { useRef, Suspense, useMemo } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Canvas, useFrame } from '@react-three/fiber'
 import {
   Float,
   Stars,
   PerspectiveCamera,
-  useTexture,
   MeshDistortMaterial,
-  Sphere,
   Environment,
 } from '@react-three/drei'
 import { EffectComposer, Bloom, ChromaticAberration, Vignette } from '@react-three/postprocessing'
 import * as THREE from 'three'
 
+/* ── Particles — amber/orange fire palette matching logo ── */
 function ParticleField() {
   const count = 500
   const mesh = useRef<THREE.Points>(null)
 
   const particles = useMemo(() => {
     const positions = new Float32Array(count * 3)
-    const colors = new Float32Array(count * 3)
+    const colors    = new Float32Array(count * 3)
 
     for (let i = 0; i < count; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 50
+      positions[i * 3]     = (Math.random() - 0.5) * 50
       positions[i * 3 + 1] = (Math.random() - 0.5) * 50
       positions[i * 3 + 2] = (Math.random() - 0.5) * 50
 
-      // Purple to gold gradient
+      // Fire gradient: deep orange → amber gold
       const t = Math.random()
-      colors[i * 3] = 0.55 + t * 0.4           // R: more red/gold
-      colors[i * 3 + 1] = 0.36 * (1 - t) + 0.62 * t  // G
-      colors[i * 3 + 2] = 0.96 * (1 - t) + 0.04 * t  // B: more purple/blue
+      colors[i * 3]     = 1.0                       // R always high (fire)
+      colors[i * 3 + 1] = 0.38 + t * 0.33           // G: 0.38 (orange) → 0.71 (gold)
+      colors[i * 3 + 2] = 0.0                        // B always 0 (pure fire)
     }
 
     return { positions, colors }
@@ -39,8 +38,8 @@ function ParticleField() {
 
   useFrame((state) => {
     if (mesh.current) {
-      mesh.current.rotation.y = state.clock.elapsedTime * 0.02
-      mesh.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.1) * 0.1
+      mesh.current.rotation.y = state.clock.elapsedTime * 0.018
+      mesh.current.rotation.x = Math.sin(state.clock.elapsedTime * 0.08) * 0.08
     }
   })
 
@@ -49,37 +48,25 @@ function ParticleField() {
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
-          args={[particles.positions, 3]}  // ← Fix: args required for TS
+          args={[particles.positions, 3]}
           count={count}
           itemSize={3}
         />
         <bufferAttribute
           attach="attributes-color"
-          args={[particles.colors, 3]}      // ← Fix: args required for TS
+          args={[particles.colors, 3]}
           count={count}
           itemSize={3}
         />
       </bufferGeometry>
-      <pointsMaterial
-        size={0.1}
-        vertexColors
-        transparent
-        opacity={0.8}
-        sizeAttenuation
-      />
+      <pointsMaterial size={0.09} vertexColors transparent opacity={0.75} sizeAttenuation />
     </points>
   )
 }
 
 function FloatingOrb({
-  position,
-  color,
-  scale = 1,
-}: {
-  position: [number, number, number]
-  color: string
-  scale?: number
-}) {
+  position, color, scale = 1,
+}: { position: [number, number, number]; color: string; scale?: number }) {
   const mesh = useRef<THREE.Mesh>(null)
 
   useFrame((state) => {
@@ -97,8 +84,8 @@ function FloatingOrb({
           envMapIntensity={0.5}
           clearcoat={1}
           clearcoatRoughness={0}
-          metalness={0.1}
-          roughness={0.2}
+          metalness={0.2}
+          roughness={0.15}
           distort={0.3}
           speed={2}
         />
@@ -120,14 +107,15 @@ function CentralSphere() {
   return (
     <mesh ref={mesh}>
       <sphereGeometry args={[2, 64, 64]} />
+      {/* Core brand color: deep orange */}
       <MeshDistortMaterial
-        color="#8b5cf6"
+        color="#FF6200"
         envMapIntensity={1}
         clearcoat={1}
         clearcoatRoughness={0}
-        metalness={0.9}
+        metalness={0.85}
         roughness={0.1}
-        distort={0.4}
+        distort={0.38}
         speed={1.5}
       />
     </mesh>
@@ -138,28 +126,30 @@ function Scene() {
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, 0, 10]} fov={60} />
-      <ambientLight intensity={0.2} />
-      <pointLight position={[10, 10, 10]} intensity={1} color="#8b5cf6" />
-      <pointLight position={[-10, -10, -10]} intensity={0.5} color="#f59e0b" />
-      <spotLight position={[0, 10, 0]} intensity={0.5} color="#00d4ff" angle={0.3} />
+      <ambientLight intensity={0.15} />
+      {/* Key light: brand orange */}
+      <pointLight position={[10, 10, 10]}   intensity={1.2} color="#FF6200" />
+      {/* Fill light: amber gold */}
+      <pointLight position={[-10, -10, -10]} intensity={0.6} color="#FFB733" />
+      {/* Rim: dark orange */}
+      <spotLight   position={[0, 10, 0]}     intensity={0.4} color="#FF8C00" angle={0.3} />
 
-      <Stars radius={100} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
-
+      <Stars radius={100} depth={50} count={2500} factor={4} saturation={0} fade speed={0.8} />
       <ParticleField />
-
       <CentralSphere />
 
-      <FloatingOrb position={[-4, 2, -2]} color="#f59e0b" scale={0.5} />
-      <FloatingOrb position={[4, -1, -3]} color="#00d4ff" scale={0.7} />
-      <FloatingOrb position={[-3, -2, 1]} color="#bf00ff" scale={0.4} />
-      <FloatingOrb position={[3, 3, -1]} color="#ff00aa" scale={0.3} />
+      {/* Floating orbs — fire tones */}
+      <FloatingOrb position={[-4,  2, -2]} color="#FF8C00" scale={0.5} />
+      <FloatingOrb position={[ 4, -1, -3]} color="#FFB733" scale={0.7} />
+      <FloatingOrb position={[-3, -2,  1]} color="#FF4500" scale={0.4} />
+      <FloatingOrb position={[ 3,  3, -1]} color="#FFD080" scale={0.3} />
 
       <Environment preset="night" />
 
       <EffectComposer>
-        <Bloom luminanceThreshold={0.2} luminanceSmoothing={0.9} intensity={1.5} radius={0.8} />
-        <ChromaticAberration offset={[0.001, 0.001]} />
-        <Vignette darkness={0.5} offset={0.5} />
+        <Bloom luminanceThreshold={0.18} luminanceSmoothing={0.9} intensity={1.4} radius={0.8} />
+        <ChromaticAberration offset={[0.0008, 0.0008]} />
+        <Vignette darkness={0.55} offset={0.45} />
       </EffectComposer>
     </>
   )

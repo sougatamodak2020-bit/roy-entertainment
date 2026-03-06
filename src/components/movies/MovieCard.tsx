@@ -1,50 +1,119 @@
-// src/components/movies/MovieCard.tsx
+// components/movies/MovieCard.tsx
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { Star } from 'lucide-react'
+import { Play, Star, Clock } from 'lucide-react'
+import type { Movie } from '@/types'
 
 interface MovieCardProps {
-  movie: any
+  movie: Movie | any
   priority?: boolean
+  /** 'wide' = 16:9 (default) | 'poster' = 2:3 */
+  aspect?: 'wide' | 'poster'
 }
 
-export default function MovieCard({ movie, priority = false }: MovieCardProps) {
+export default function MovieCard({ movie, priority = false, aspect = 'wide' }: MovieCardProps) {
   if (!movie?.slug) {
-    return <div className="bg-gray-800 rounded-lg h-64 flex items-center justify-center text-gray-400">No movie</div>
+    return (
+      <div style={{
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--glass-border)',
+        borderRadius: 14,
+        aspectRatio: aspect === 'poster' ? '2/3' : '16/9',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: 'var(--text-dim)', fontSize: '0.8rem',
+      }}>
+        No data
+      </div>
+    )
   }
 
+  const imgSrc = aspect === 'poster'
+    ? (movie.poster_url   || movie.backdrop_url || '/placeholder-poster.jpg')
+    : (movie.backdrop_url || movie.poster_url   || '/placeholder-wide.jpg')
+
   return (
-    <Link href={`/watch/${movie.slug}`} className="block group">
-      <div className="relative overflow-hidden rounded-xl bg-black/40 shadow-lg transition-all duration-300 group-hover:shadow-2xl group-hover:shadow-purple-900/30">
-        <div className="relative aspect-[2/3] md:aspect-[3/4]">
+    <Link href={`/watch/${movie.slug}`} style={{ textDecoration: 'none', display: 'block' }}>
+      <div className="movie-card-wrapper">
+
+        {/* Image — aspect ratio is set via CSS on .movie-card, override here */}
+        <div style={{
+          position: 'relative',
+          aspectRatio: aspect === 'poster' ? '2/3' : '16/9',
+          overflow: 'hidden',
+        }}>
           <Image
-            src={movie.poster_url || movie.backdrop_url || '/placeholder-wide.jpg'}
-            alt={movie.title || 'Movie poster'}
+            src={imgSrc}
+            alt={movie.title || 'Movie thumbnail'}
             fill
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
+            style={{ objectFit: 'cover' }}
             priority={priority}
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            quality={85}
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+            quality={80}
+            unoptimized
           />
-        </div>
 
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          {/* Play button — shown on hover via parent .movie-card-wrapper:hover */}
+          <div className="movie-play-btn">
+            <Play style={{ width: 17, height: 17, fill: 'white', color: 'white', marginLeft: 2 }} />
+          </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5 text-white z-10 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
-          <h3 className="font-bold text-lg md:text-xl line-clamp-2 mb-1.5 group-hover:text-purple-300 transition-colors">
-            {movie.title}
-          </h3>
+          {/* Gradient scrim */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(to top, rgba(12,10,7,0.92) 0%, rgba(12,10,7,0.30) 45%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
 
-          <div className="flex items-center gap-3 text-sm md:text-base">
-            <div className="flex items-center gap-1.5">
-              <Star className="w-4 h-4 md:w-5 md:h-5 text-yellow-400 fill-yellow-400" />
-              <span className="font-medium">
-                {movie.admin_rating || movie.rating || 'N/A'}
+          {/* Rating badge — top right */}
+          {(movie.admin_rating || movie.rating) && (
+            <div style={{
+              position: 'absolute', top: '0.55rem', right: '0.55rem',
+              background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)',
+              border: '1px solid rgba(255,183,51,0.30)',
+              borderRadius: 7, padding: '0.22rem 0.55rem',
+              display: 'flex', alignItems: 'center', gap: '0.28rem',
+            }}>
+              <Star style={{ width: 11, height: 11, color: 'var(--brand-gold)', fill: 'var(--brand-gold)' }} />
+              <span style={{ fontSize: '0.73rem', fontWeight: 700, color: 'var(--brand-gold)' }}>
+                {movie.admin_rating || movie.rating}
               </span>
             </div>
-            <span className="opacity-70">•</span>
-            <span>{movie.release_year || 'N/A'}</span>
+          )}
+
+          {/* Status badges — top left */}
+          <div className="card-badge-group">
+            {movie.is_featured && <span className="badge badge-fire">Featured</span>}
+            {movie.is_trending && (
+              <span className="badge" style={{ background: 'rgba(255,69,0,0.22)', border: '1px solid rgba(255,69,0,0.4)', color: '#FF8C69' }}>
+                🔥 Hot
+              </span>
+            )}
+          </div>
+
+          {/* Bottom text overlay */}
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            padding: '0.7rem 0.85rem',
+          }}>
+            <h3 style={{
+              fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)',
+              marginBottom: '0.28rem', lineHeight: 1.25,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {movie.title}
+            </h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              {movie.release_year && <span>{movie.release_year}</span>}
+              {movie.duration_minutes > 0 && (
+                <>
+                  <span style={{ opacity: 0.4 }}>·</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Clock style={{ width: 10, height: 10 }} />{movie.duration_minutes}m
+                  </span>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

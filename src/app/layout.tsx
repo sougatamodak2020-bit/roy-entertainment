@@ -36,7 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             style: {
               background: 'rgba(26,26,35,0.95)',
               color: '#fff',
-              border: '1px solid rgba(192,38,211,0.3)',
+              border: '1px solid rgba(255,98,0,0.3)',
               backdropFilter: 'blur(16px)',
               borderRadius: '16px',
             },

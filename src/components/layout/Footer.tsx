@@ -1,126 +1,127 @@
 'use client'
 
 import Link from 'next/link'
-import { Crown, Facebook, Twitter, Instagram, Youtube } from 'lucide-react'
+import Image from 'next/image'
+import { Facebook, Twitter, Instagram, Youtube, Mail, Flame } from 'lucide-react'
+
+const NAV_COLS = {
+  Explore: [
+    { label: 'Movies',       href: '/movies'                     },
+    { label: 'Series',       href: '/series'                     },
+    { label: 'New Releases', href: '/movies?filter=new'          },
+    { label: 'Trending',     href: '/movies?filter=trending'     },
+  ],
+  Company: [
+    { label: 'About Us', href: '#' },
+    { label: 'Careers',  href: '#' },
+    { label: 'Blog',     href: '#' },
+    { label: 'Press',    href: '#' },
+  ],
+  Support: [
+    { label: 'Help Center', href: '#' },
+    { label: 'Contact Us',  href: '#' },
+    { label: 'FAQ',         href: '#' },
+    { label: 'Feedback',    href: '#' },
+  ],
+}
+
+const SOCIALS = [
+  { Icon: Facebook,  href: '#', label: 'Facebook'  },
+  { Icon: Twitter,   href: '#', label: 'Twitter'   },
+  { Icon: Instagram, href: '#', label: 'Instagram' },
+  { Icon: Youtube,   href: '#', label: 'YouTube'   },
+  { Icon: Mail,      href: '#', label: 'Email'     },
+]
 
 export function Footer() {
-  const currentYear = new Date().getFullYear()
+  const year = new Date().getFullYear()
 
   return (
-    <footer 
-      style={{
-        backgroundColor: '#050506',
-        borderTop: '1px solid rgba(255,255,255,0.05)',
-        padding: '4rem 0 2rem',
-      }}
-    >
-      <div style={{ maxWidth: '1400px', margin: '0 auto', padding: '0 1.5rem' }}>
-        {/* Main Footer Content */}
-        <div 
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '3rem',
-            marginBottom: '3rem',
-          }}
-        >
-          {/* Brand */}
+    <footer className="footer">
+      {/* Ambient radial glow */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+        width: 650, height: 280,
+        background: 'radial-gradient(ellipse at bottom, var(--glow-lg) 0%, transparent 70%)',
+        pointerEvents: 'none',
+      }} />
+
+      <div className="container" style={{ position: 'relative' }}>
+        <div className="footer-grid">
+
+          {/* Brand column */}
           <div>
-            <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textDecoration: 'none', marginBottom: '1rem' }}>
-              <div 
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '50%',
-                  background: 'linear-gradient(135deg, #8b5cf6 0%, #f59e0b 100%)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Crown style={{ width: '20px', height: '20px', color: 'white' }} />
-              </div>
-              <span style={{ fontSize: '1.25rem', fontWeight: 'bold', fontFamily: 'var(--font-cinzel), serif' }}>
-                <span className="gradient-text">ROY</span>
-                <span style={{ color: 'rgba(255,255,255,0.8)', marginLeft: '4px' }}>Entertainment</span>
-              </span>
-            </Link>
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.875rem', lineHeight: 1.6 }}>
-              Experience cinema like never before with premium streaming and AI-powered recommendations.
-            </p>
-          </div>
-          
-          {/* Links */}
-          <div>
-            <h4 style={{ color: 'white', fontWeight: 600, marginBottom: '1rem', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Company</h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {['About Us', 'Careers', 'Press', 'Blog'].map((item) => (
-                <li key={item} style={{ marginBottom: '0.5rem' }}>
-                  <Link href="#" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontSize: '0.875rem', transition: 'color 0.2s' }}>
-                    {item}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-          
-          <div>
-            <h4 style={{ color: 'white', fontWeight: 600, marginBottom: '1rem', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Support</h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {['Help Center', 'Contact Us', 'FAQ', 'Feedback'].map((item) => (
-                <li key={item} style={{ marginBottom: '0.5rem' }}>
-                  <Link href="#" style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontSize: '0.875rem' }}>
-                    {item}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-          
-          <div>
-            <h4 style={{ color: 'white', fontWeight: 600, marginBottom: '1rem', fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Follow Us</h4>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              {[Facebook, Twitter, Instagram, Youtube].map((Icon, i) => (
-                <a 
-                  key={i}
-                  href="#" 
-                  style={{
-                    width: '40px',
-                    height: '40px',
-                    borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'rgba(255,255,255,0.6)',
-                    transition: 'all 0.2s',
+            <Link href="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.65rem', textDecoration: 'none', marginBottom: '1.1rem' }}>
+              <div style={{
+                width: 42, height: 42, borderRadius: 10,
+                background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 20px var(--glow-sm)', overflow: 'hidden', flexShrink: 0,
+              }}>
+                <Image
+                  src="/images/logo.jpg"
+                  alt="Roy Entertainment"
+                  width={42} height={42}
+                  style={{ objectFit: 'cover', width: '100%', height: '100%' }}
+                  onError={(e) => {
+                    const t = e.target as HTMLImageElement
+                    t.style.display = 'none'
+                    if (t.parentElement) {
+                      t.parentElement.innerHTML = `<span style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:white">RE</span>`
+                    }
                   }}
-                >
-                  <Icon style={{ width: '18px', height: '18px' }} />
+                />
+              </div>
+              <div>
+                <div style={{ fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.35rem', letterSpacing: '0.08em', lineHeight: 1 }}>
+                  <span className="gradient-text">ROY</span>
+                  <span style={{ color: 'var(--text-secondary)', marginLeft: 5, fontSize: '0.9rem', fontFamily: 'Outfit,sans-serif', fontWeight: 500, letterSpacing: 0 }}>
+                    Entertainment
+                  </span>
+                </div>
+              </div>
+            </Link>
+
+            <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', lineHeight: 1.72, marginBottom: '1.5rem' }}>
+              Premium streaming, handpicked cinema, and AI-powered recommendations — all in one place. Made for true movie lovers.
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.55rem', flexWrap: 'wrap' }}>
+              {SOCIALS.map(({ Icon, href, label }) => (
+                <a key={label} href={href} aria-label={label} className="footer-social-btn">
+                  <Icon style={{ width: 16, height: 16 }} />
                 </a>
               ))}
             </div>
           </div>
+
+          {/* Link columns */}
+          {Object.entries(NAV_COLS).map(([heading, links]) => (
+            <div key={heading}>
+              <p className="footer-heading">{heading}</p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                {links.map(({ label, href }) => (
+                  <li key={label}>
+                    <Link href={href} className="footer-link">{label}</Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
-        
-        {/* Bottom */}
-        <div 
-          style={{
-            borderTop: '1px solid rgba(255,255,255,0.05)',
-            paddingTop: '2rem',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '1rem',
-          }}
-        >
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.875rem' }}>
-            © {currentYear} Roy Entertainment. All rights reserved.
-          </p>
-          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.875rem' }}>
-            Made with ❤️ in India
+
+        {/* Bottom bar */}
+        <div className="footer-bottom">
+          <p>© {year} Roy Entertainment. All rights reserved.</p>
+          <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+            {['Privacy Policy', 'Terms of Service'].map(t => (
+              <Link key={t} href="#" className="footer-link" style={{ padding: 0, fontSize: '0.8rem' }}>
+                {t}
+              </Link>
+            ))}
+          </div>
+          <p style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+            Made with <Flame style={{ width: 13, height: 13, color: 'var(--brand-core)' }} /> in India
           </p>
         </div>
       </div>

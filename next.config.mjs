@@ -18,10 +18,28 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'images.unsplash.com',
       },
+      // ───────────────────────────────────────────────
+      // Add these for Google profile pictures / avatars
+      // ───────────────────────────────────────────────
+      {
+        protocol: 'https',
+        hostname: 'lh3.googleusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh5.googleusercontent.com', // sometimes used
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh4.googleusercontent.com', // fallback
+      },
+      {
+        protocol: 'https',
+        hostname: 'lh6.googleusercontent.com',
+      },
     ],
   },
   transpilePackages: ['three'],
-  // Add empty turbopack config to silence the warning
   turbopack: {},
   experimental: {
     serverActions: {

@@ -5,109 +5,94 @@ import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
 import Link from 'next/link'
 import {
-  Play, ArrowLeft, Heart, Plus, Share2, Star, Clock, User, ChevronRight, Loader2
+  Play, ArrowLeft, Heart, Plus, Share2, Star, Clock,
+  Globe, Film, ChevronRight,
 } from 'lucide-react'
 import { Navigation } from '@/components/layout/Navigation'
 import { Footer } from '@/components/layout/Footer'
 import { YouTubePlayer } from '@/components/video/YouTubePlayer'
+import { MovieCarousel } from '@/components/movies/MovieCarousel'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import type { Movie } from '@/types'
 
 export default function WatchPage() {
-  const params = useParams()
-  const router = useRouter()
-  const slug = params?.slug as string
+  const params   = useParams()
+  const router   = useRouter()
+  const slug     = params?.slug as string
 
-  const [movie, setMovie] = useState<Movie | null>(null)
-  const [similarMovies, setSimilarMovies] = useState<Movie[]>([])
+  const [movie,   setMovie]   = useState<Movie | null>(null)
+  const [similar, setSimilar] = useState<Movie[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isFavorite, setIsFavorite] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+  const [fav,     setFav]     = useState(false)
 
   const supabase = createSupabaseBrowserClient()
 
-  useEffect(() => {
-    if (slug) loadMovie()
-  }, [slug])
+  useEffect(() => { if (slug) loadMovie() }, [slug])
 
   const loadMovie = async () => {
-    setLoading(true)
-    setError(null)
-
+    setLoading(true); setError(null)
     try {
-      const { data: movieData, error: movieError } = await supabase
-        .from('movies')
-        .select('*')
-        .eq('slug', slug)
-        .eq('is_published', true)
-        .single()
-
-      if (movieError || !movieData) throw new Error(movieError?.message || 'Movie not found')
-
-      setMovie(movieData as Movie)
-
-      await supabase.from('movies').update({ view_count: (movieData.view_count || 0) + 1 }).eq('id', movieData.id)
-
-      if (movieData.genre?.length) {
-        const { data: similar } = await supabase
-          .from('movies')
-          .select('*')
-          .eq('is_published', true)
-          .neq('id', movieData.id)
-          .overlaps('genre', movieData.genre)
-          .limit(6)
-
-        setSimilarMovies(similar || [])
+      const { data, error: err } = await supabase
+        .from('movies').select('*')
+        .eq('slug', slug).eq('is_published', true).single()
+      if (err || !data) throw new Error(err?.message || 'Movie not found')
+      setMovie(data as Movie)
+      supabase.from('movies').update({ view_count: (data.view_count || 0) + 1 }).eq('id', data.id)
+      if (data.genre?.length) {
+        const { data: sim } = await supabase
+          .from('movies').select('*')
+          .eq('is_published', true).neq('id', data.id)
+          .overlaps('genre', data.genre).limit(10)
+        setSimilar(sim || [])
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load movie')
+    } catch (e: any) {
+      setError(e.message || 'Failed to load')
     } finally {
       setLoading(false)
     }
   }
 
-  const extractYouTubeId = (url?: string): string | null => {
+  const extractYTId = (url?: string) => {
     if (!url) return null
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/)
-    return match?.[1] ?? null
+    return url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/)?.[1] ?? null
   }
 
-  const videoId = movie ? (movie.youtube_id || extractYouTubeId(movie.youtube_url)) : null
+  const videoId = movie ? (movie.youtube_id || extractYTId(movie.youtube_url)) : null
 
+  /* ── Loading ── */
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0a0a0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Loader2 style={{ width: 80, height: 80, color: '#a78bfa', animation: 'spin 1s linear infinite' }} />
+      <div className="loading-screen">
+        <div className="loading-ring" />
+        <p className="loading-text">Loading</p>
       </div>
     )
   }
 
+  /* ── Error ── */
   if (error || !movie) {
     return (
-      <div style={{ minHeight: '100vh', background: '#0a0a0b', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-        <div style={{ textAlign: 'center', maxWidth: '500px' }}>
-          <Play style={{ width: 100, height: 100, color: '#ef4444', marginBottom: '1.5rem', opacity: 0.7 }} />
-          <h1 style={{ fontSize: '2.5rem', color: 'white', marginBottom: '1rem' }}>{error || 'Movie Not Found'}</h1>
-          <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '1.2rem', marginBottom: '2rem' }}>
-            The content you're looking for is unavailable or has been removed.
+      <div style={{ minHeight: '100vh', background: 'var(--bg-void)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <div style={{ textAlign: 'center', maxWidth: 480 }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: 20,
+            background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 1.5rem',
+            boxShadow: '0 0 40px var(--glow-md)',
+          }}>
+            <Film style={{ width: 38, height: 38, color: 'white' }} />
+          </div>
+          <h1 style={{ fontFamily: 'Bebas Neue', fontSize: 'clamp(2rem, 6vw, 3rem)', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '0.75rem' }}>
+            {error || 'Not Found'}
+          </h1>
+          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '1rem', lineHeight: 1.6 }}>
+            This content is unavailable or has been removed.
           </p>
           <Link href="/movies">
-            <button style={{
-              padding: '1.2rem 2.5rem',
-              background: 'linear-gradient(135deg, #7c3aed, #a78bfa)',
-              border: 'none',
-              borderRadius: '60px',
-              color: 'white',
-              fontSize: '1.2rem',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.3s',
-              boxShadow: '0 10px 30px rgba(139,92,246,0.4)'
-            }}
-            onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-            onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}>
-              <ArrowLeft size={24} />
-              Back to Movies
+            <button className="btn-fire" style={{ gap: '0.6rem' }}>
+              <ArrowLeft size={17} /> Back to Movies
             </button>
           </Link>
         </div>
@@ -116,216 +101,178 @@ export default function WatchPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(to bottom, #0a0a0b 0%, #050506 100%)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-void)' }}>
       <Navigation />
 
-      {/* Hero Video + Poster Section - FIXED */}
-      <div style={{ position: 'relative', background: '#000' }}>
-        {/* Back Button */}
-        <button
-          onClick={() => router.back()}
-          style={{
-            position: 'absolute',
-            top: '1.5rem',
-            left: '1.5rem',
-            zIndex: 10,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.8rem',
-            padding: '0.8rem 1.5rem',
-            background: 'rgba(0,0,0,0.6)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: '50px',
-            color: 'white',
-            fontWeight: 500,
-            fontSize: '1rem',
-            cursor: 'pointer',
-            transition: 'all 0.3s ease',
-            boxShadow: '0 6px 20px rgba(0,0,0,0.5)'
-          }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = 'rgba(139,92,246,0.3)'
-            e.currentTarget.style.transform = 'translateY(-3px)'
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'rgba(0,0,0,0.6)'
-            e.currentTarget.style.transform = 'translateY(0)'
-          }}
-        >
-          <ArrowLeft size={20} />
-          Back
-        </button>
+      {/* ════════════════════════════════════════
+          VIDEO SECTION
+          ════════════════════════════════════════ */}
+      <div style={{ background: '#000', paddingTop: 66 /* nav height */ }}>
+        <div style={{ maxWidth: 1440, margin: '0 auto', padding: '0 clamp(1rem, 3vw, 2rem) 0' }}>
 
-        {/* Video + Poster Container */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          maxWidth: '1440px',
-          margin: '0 auto',
-          padding: '0 1.5rem 2rem',
-        }}>
-          {/* Video Player - smaller & aesthetic */}
-          <div style={{
-            width: '100%',
-            maxWidth: '1100px',
-            margin: '2rem auto 0',
-            aspectRatio: '16/9',
-            borderRadius: '16px',
-            overflow: 'hidden',
-            boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-            border: '1px solid rgba(139,92,246,0.2)',
-            background: '#000'
-          }}>
+          {/* Back button */}
+          <div style={{ paddingTop: '1.25rem', paddingBottom: '0.75rem' }}>
+            <button
+              onClick={() => router.back()}
+              className="btn-ghost"
+              style={{ padding: '0.55rem 1.2rem', fontSize: '0.875rem', gap: '0.5rem' }}
+            >
+              <ArrowLeft size={15} /> Back
+            </button>
+          </div>
+
+          {/* Video player */}
+          <div className="video-wrapper" style={{ marginBottom: '0' }}>
             {videoId ? (
               <YouTubePlayer videoId={videoId} title={movie.title} />
             ) : (
               <div style={{
-                height: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'rgba(255,255,255,0.6)',
-                background: 'linear-gradient(135deg, #1a1a2e, #0f0f1a)'
+                width: '100%', height: '100%',
+                background: 'linear-gradient(135deg, var(--bg-elevated), var(--bg-deep))',
+                display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                color: 'var(--text-muted)', gap: '1rem',
               }}>
-                <Play size={80} strokeWidth={1.2} style={{ marginBottom: '1.5rem', opacity: 0.7 }} />
-                <h2 style={{ fontSize: '2rem', marginBottom: '1rem' }}>Video Not Available</h2>
-                <p style={{ maxWidth: '500px', textAlign: 'center' }}>
-                  This content is currently unavailable or the video link is invalid.
-                </p>
+                <div style={{
+                  width: 70, height: 70, borderRadius: 18,
+                  background: 'var(--glass-bg)', border: '1px solid var(--glass-border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Play size={30} style={{ opacity: 0.5 }} />
+                </div>
+                <p style={{ fontSize: '1.1rem', fontWeight: 600 }}>Video Not Available</p>
+                <p style={{ fontSize: '0.875rem', opacity: 0.6 }}>No valid video source found</p>
               </div>
             )}
           </div>
+        </div>
+      </div>
 
-          {/* Poster + Quick Info - compact, full visible */}
+      {/* ════════════════════════════════════════
+          MOVIE INFO SECTION
+          ════════════════════════════════════════ */}
+      <div style={{ background: 'var(--bg-void)' }}>
+        <div style={{ maxWidth: 1440, margin: '0 auto', padding: 'clamp(2rem, 4vh, 3.5rem) clamp(1rem, 3vw, 2rem)' }}>
+
           <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            md: { flexDirection: 'row' },
-            gap: '1.5rem',
-            marginTop: '2rem',
-            alignItems: 'flex-start'
+            display: 'grid',
+            gridTemplateColumns: 'clamp(180px, 22vw, 300px) 1fr',
+            gap: 'clamp(1.5rem, 4vw, 3rem)',
+            alignItems: 'flex-start',
           }}>
-            {/* Poster */}
+
+            {/* ── Poster ── */}
             <div style={{
-              width: '100%',
-              maxWidth: '340px',
+              borderRadius: 16, overflow: 'hidden',
+              border: '1px solid var(--glass-border)',
+              boxShadow: '0 20px 50px rgba(0,0,0,0.55), 0 0 30px var(--glow-sm)',
               flexShrink: 0,
-              borderRadius: '16px',
-              overflow: 'hidden',
-              boxShadow: '0 15px 40px rgba(0,0,0,0.5)',
-              border: '1px solid rgba(139,92,246,0.25)'
             }}>
               <Image
                 src={movie.poster_url || movie.backdrop_url || '/placeholder-poster.jpg'}
                 alt={movie.title}
-                width={340}
-                height={510}
-                style={{ width: '100%', height: 'auto', objectFit: 'contain', background: '#000' }}
-                priority
-                unoptimized
+                width={300} height={450}
+                style={{ width: '100%', height: 'auto', objectFit: 'cover', display: 'block' }}
+                priority unoptimized
               />
             </div>
 
-            {/* Quick Info */}
-            <div style={{ flex: 1 }}>
+            {/* ── Info ── */}
+            <div>
+
+              {/* Category pill */}
+              {(movie.is_trending || movie.is_featured) && (
+                <div style={{ marginBottom: '0.85rem' }}>
+                  {movie.is_trending && <span className="badge badge-fire" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>🔥 Trending</span>}
+                  {movie.is_featured && !movie.is_trending && <span className="badge badge-fire">✦ Featured</span>}
+                </div>
+              )}
+
+              {/* Title */}
               <h1 style={{
-                fontSize: 'clamp(2.5rem, 5vw, 4rem)',
-                fontWeight: 900,
-                marginBottom: '1rem',
-                background: 'linear-gradient(90deg, #ffffff, #d4d4ff, #ffe4c4)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                lineHeight: 1.1
+                fontFamily: 'Bebas Neue, sans-serif',
+                fontSize: 'clamp(2rem, 5.5vw, 4.5rem)',
+                letterSpacing: '0.03em', lineHeight: 0.92,
+                color: 'var(--text-primary)', marginBottom: '1.1rem',
               }}>
-                {movie.title}
+                <span className="gradient-text-warm">{movie.title}</span>
               </h1>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.2rem', marginBottom: '1.5rem', fontSize: '1rem', color: 'rgba(255,255,255,0.85)' }}>
-                <span>{movie.release_year}</span>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Clock size={16} /> {movie.duration_minutes} min
-                </span>
-                {movie.language && <><span>•</span><span>{movie.language}</span></>}
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#fbbf24' }}>
-                  <Star size={16} fill="#fbbf24" /> {movie.rating || 'N/A'}
-                </span>
+              {/* Meta row */}
+              <div style={{
+                display: 'flex', flexWrap: 'wrap', alignItems: 'center',
+                gap: '0.65rem', marginBottom: '1.25rem',
+                fontSize: '0.9rem', color: 'var(--text-secondary)',
+              }}>
+                {movie.release_year && <span>{movie.release_year}</span>}
+                {movie.duration_minutes > 0 && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <Clock size={14} />{movie.duration_minutes} min
+                  </span>
+                )}
+                {movie.language && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <Globe size={14} />{movie.language}
+                  </span>
+                )}
+                {(movie.admin_rating || movie.rating) && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--brand-gold)', fontWeight: 700 }}>
+                    <Star size={14} fill="var(--brand-gold)" />
+                    {movie.admin_rating || movie.rating}
+                  </span>
+                )}
               </div>
 
+              {/* Genres */}
               {movie.genre?.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem', marginBottom: '2rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.75rem' }}>
                   {movie.genre.map(g => (
-                    <span key={g} style={{
-                      padding: '0.5rem 1rem',
-                      background: 'rgba(139,92,246,0.15)',
-                      border: '1px solid rgba(139,92,246,0.3)',
-                      borderRadius: '50px',
-                      fontSize: '0.9rem',
-                      color: '#d8b4fe'
-                    }}>
-                      {g}
-                    </span>
+                    <span key={g} className="badge badge-fire">{g}</span>
                   ))}
                 </div>
               )}
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+              {/* Description */}
+              {movie.description && (
+                <p style={{
+                  fontSize: 'clamp(0.9rem, 1.8vw, 1.05rem)',
+                  lineHeight: 1.8, color: 'var(--text-secondary)',
+                  marginBottom: '2rem', maxWidth: 720,
+                }}>
+                  {movie.description}
+                </p>
+              )}
+
+              {/* Action buttons */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                {videoId && (
+                  <a href={`#player`} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+                    <button className="btn-fire" style={{ gap: '0.6rem', padding: '0.9rem 2rem' }}>
+                      <Play size={17} fill="white" /> Play Now
+                    </button>
+                  </a>
+                )}
+
                 <button
-                  onClick={() => setIsFavorite(!isFavorite)}
+                  onClick={() => setFav(v => !v)}
+                  className="btn-ghost"
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.6rem',
-                    padding: '0.9rem 1.6rem',
-                    background: isFavorite ? 'rgba(239,68,68,0.2)' : 'rgba(139,92,246,0.15)',
-                    border: `1px solid ${isFavorite ? '#f87171' : 'rgba(139,92,246,0.4)'}`,
-                    borderRadius: '50px',
-                    color: isFavorite ? '#f87171' : '#d8b4fe',
-                    fontWeight: 600,
-                    fontSize: '1rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
+                    gap: '0.55rem',
+                    borderColor: fav ? '#EF4444' : 'var(--glass-border)',
+                    color: fav ? '#EF4444' : 'var(--text-secondary)',
+                    background: fav ? 'rgba(239,68,68,0.10)' : 'var(--glass-bg)',
                   }}
                 >
-                  <Heart size={20} fill={isFavorite ? '#f87171' : 'none'} />
-                  {isFavorite ? 'Favorited' : 'Favorite'}
+                  <Heart size={17} fill={fav ? '#EF4444' : 'none'} />
+                  {fav ? 'Favorited' : 'Favorite'}
                 </button>
 
-                <button style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.6rem',
-                  padding: '0.9rem 1.6rem',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: '50px',
-                  color: 'white',
-                  fontWeight: 600,
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}>
-                  <Plus size={20} />
-                  Watchlist
+                <button className="btn-ghost" style={{ gap: '0.55rem' }}>
+                  <Plus size={17} /> Watchlist
                 </button>
 
-                <button style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.6rem',
-                  padding: '0.9rem 1.6rem',
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  borderRadius: '50px',
-                  color: 'white',
-                  fontWeight: 600,
-                  fontSize: '1rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}>
-                  <Share2 size={20} />
-                  Share
+                <button className="btn-ghost" style={{ gap: '0.55rem' }}>
+                  <Share2 size={17} /> Share
                 </button>
               </div>
             </div>
@@ -333,63 +280,34 @@ export default function WatchPage() {
         </div>
       </div>
 
-      {/* Original Main Content - unchanged */}
-      <div style={{ maxWidth: '1440px', margin: '0 auto', padding: '4rem 2rem 6rem' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: '3.5rem' }}>
-          {/* Left - Details */}
-          <div>
-            {/* Your original description, genres, buttons are here - unchanged */}
-            {movie.description && (
-              <p style={{
-                fontSize: '1.15rem',
-                lineHeight: 1.85,
-                color: 'rgba(255,255,255,0.88)',
-                marginBottom: '3.5rem',
-                maxWidth: '900px'
-              }}>
-                {movie.description}
-              </p>
-            )}
-          </div>
-
-          {/* Right Sidebar - unchanged */}
-          <div>
-            {/* Your original sidebar code */}
+      {/* ════════════════════════════════════════
+          SIMILAR MOVIES
+          ════════════════════════════════════════ */}
+      {similar.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--glass-border)' }}>
+          <div className="container">
+            <MovieCarousel
+              title="You Might Also Like"
+              emoji="🎬"
+              movies={similar}
+              cardMode="wide"
+              viewAllHref="/movies"
+            />
           </div>
         </div>
-      </div>
+      )}
 
       <Footer />
 
       <style jsx global>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        /* Targeted fixes for poster & video section */
-        .poster-container {
-          max-height: 500px;
-          overflow: hidden;
-          border-radius: 16px;
-          box-shadow: 0 15px 40px rgba(0,0,0,0.5);
-          border: 1px solid rgba(139,92,246,0.25);
-        }
-
-        .video-player-container {
-          max-height: 60vh;
-          margin: 0 auto;
-          border-radius: 16px;
-          overflow: hidden;
-          box-shadow: 0 20px 60px rgba(0,0,0,0.6);
-          border: 1px solid rgba(139,92,246,0.2);
-        }
-
-        @media (max-width: 1024px) {
-          .video-player-container {
-            max-height: 50vh;
+        @media (max-width: 640px) {
+          /* Stack poster + info vertically on mobile */
+          .watch-info-grid {
+            grid-template-columns: 1fr !important;
           }
-          .poster-container {
-            max-height: 400px;
+          .watch-poster {
+            max-width: 220px;
+            margin: 0 auto;
           }
         }
       `}</style>

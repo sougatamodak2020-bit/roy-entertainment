@@ -1,236 +1,202 @@
+// src/app/(main)/creator/page.tsx
 'use client'
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { 
-  Film, Upload, Eye, Star, TrendingUp, Plus, Clock, CheckCircle,
-  XCircle, AlertCircle, LogOut, Crown, User
+import {
+  Film, Upload, Eye, Star, TrendingUp, Clock,
+  CheckCircle, AlertCircle, LogOut, ArrowLeft
 } from 'lucide-react'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 
+const MOCK_FILMS = [
+  { id: '1', title: 'My First Film',      poster: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=120', views: 1250, rating: 7.5, status: 'published' },
+  { id: '2', title: 'Short Documentary',  poster: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=120', views: 890,  rating: 8.2, status: 'pending'   },
+  { id: '3', title: 'Upcoming Project',   poster: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=120', views: 0,    rating: 0,   status: 'draft'     },
+]
+
+const STATS = [
+  { label: 'Total Films',  value: '3',    Icon: Film,       color: 'var(--brand-core)' },
+  { label: 'Total Views',  value: '2.1K', Icon: Eye,        color: 'var(--success)'    },
+  { label: 'Avg Rating',   value: '7.9',  Icon: Star,       color: 'var(--brand-gold)' },
+  { label: 'This Month',   value: '+15%', Icon: TrendingUp, color: '#38BDF8'            },
+]
+
+const STATUS_STYLE: Record<string, { bg: string; color: string; icon: React.ReactNode }> = {
+  published: { bg: 'rgba(34,197,94,0.12)',  color: '#4ADE80', icon: <CheckCircle size={13} /> },
+  pending:   { bg: 'rgba(255,140,0,0.14)',  color: 'var(--brand-gold)', icon: <Clock size={13} /> },
+  draft:     { bg: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)', icon: <AlertCircle size={13} /> },
+}
+
 export default function CreatorDashboard() {
-  const [user, setUser] = useState<any>(null)
+  const [user,    setUser]    = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createSupabaseBrowserClient()
 
-  const myMovies = [
-    { id: '1', title: 'My First Film', poster: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=100', views: 1250, rating: 7.5, status: 'published' },
-    { id: '2', title: 'Short Documentary', poster: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=100', views: 890, rating: 8.2, status: 'pending' },
-    { id: '3', title: 'Upcoming Project', poster: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=100', views: 0, rating: 0, status: 'draft' },
-  ]
-
   useEffect(() => {
-    checkAuth()
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { router.push('/login'); return }
+      setUser(user)
+      setLoading(false)
+    })
   }, [])
-
-  const checkAuth = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/login')
-      return
-    }
-    setUser(user)
-    setLoading(false)
-  }
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
-  }
 
   if (loading) {
     return (
-      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0b', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '40px', height: '40px', border: '3px solid rgba(139,92,246,0.3)', borderTopColor: '#8b5cf6', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div className="loading-screen">
+        <div className="loading-ring" />
+        <p className="loading-text">Loading Studio</p>
       </div>
     )
   }
 
+  const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Creator'
+
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0b' }}>
-      {/* Header */}
+    <div style={{ minHeight: '100vh', background: 'var(--bg-void)', color: 'var(--text-primary)' }}>
+
+      {/* Studio header */}
       <header style={{
-        backgroundColor: 'rgba(15, 15, 20, 0.95)',
-        backdropFilter: 'blur(10px)',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
-        padding: '1rem 2rem',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        background: 'var(--nav-bg)',
+        backdropFilter: 'blur(24px)',
+        borderBottom: '1px solid var(--glass-border)',
+        padding: '0 clamp(1rem, 4vw, 2rem)',
+        height: 66,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        position: 'sticky', top: 0, zIndex: 50,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Link href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', textDecoration: 'none' }}>
-            <div style={{
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #8b5cf6, #f59e0b)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Crown style={{ width: '20px', height: '20px', color: 'white' }} />
-            </div>
+          <Link href="/" style={{ textDecoration: 'none' }}>
+            <button className="icon-btn" title="Back to site">
+              <ArrowLeft size={16} />
+            </button>
           </Link>
-          <div>
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Creator Studio</h1>
-            <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>Manage your content</p>
+          <div style={{ width: 1, height: 28, background: 'var(--glass-border)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+            <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 14px var(--glow-sm)' }}>
+              <Film style={{ width: 16, height: 16, color: 'white' }} />
+            </div>
+            <div>
+              <p style={{ fontFamily: 'Bebas Neue', fontSize: '1.1rem', letterSpacing: '0.08em', lineHeight: 1 }}>
+                <span className="gradient-text">Creator</span> Studio
+              </p>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', lineHeight: 1 }}>Manage your content</p>
+            </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <Link href="/creator/upload">
-            <button style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.6rem 1.25rem',
-              background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)',
-              border: 'none',
-              borderRadius: '10px',
-              color: 'white',
-              fontWeight: 500,
-              cursor: 'pointer',
-            }}>
-              <Upload style={{ width: '18px', height: '18px' }} />
-              Upload Film
+            <button className="btn-fire" style={{ padding: '0.55rem 1.2rem', fontSize: '0.85rem' }}>
+              <Upload size={14} /> Upload Film
             </button>
           </Link>
-          <button onClick={handleLogout} style={{
-            padding: '0.6rem',
-            backgroundColor: 'rgba(255,255,255,0.05)',
-            border: 'none',
-            borderRadius: '10px',
-            color: 'rgba(255,255,255,0.6)',
-            cursor: 'pointer',
-          }}>
-            <LogOut style={{ width: '18px', height: '18px' }} />
+          <button
+            className="icon-btn"
+            title="Sign out"
+            onClick={async () => { await supabase.auth.signOut(); router.push('/') }}
+          >
+            <LogOut size={15} />
           </button>
         </div>
       </header>
 
-      <main style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem' }}>
-        {/* Welcome Banner */}
+      <main style={{ maxWidth: 1200, margin: '0 auto', padding: 'clamp(1.5rem, 4vh, 2.5rem) clamp(1rem, 4vw, 2rem)' }}>
+
+        {/* Welcome banner */}
         <div style={{
-          background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.2), rgba(245, 158, 11, 0.1))',
-          border: '1px solid rgba(139, 92, 246, 0.2)',
-          borderRadius: '20px',
-          padding: '2rem',
-          marginBottom: '2rem',
+          background: 'linear-gradient(135deg, rgba(255,98,0,0.12) 0%, rgba(255,183,51,0.07) 100%)',
+          border: '1px solid var(--glass-border)',
+          borderRadius: 20, padding: 'clamp(1.5rem, 4vw, 2rem)',
+          marginBottom: '2rem', position: 'relative', overflow: 'hidden',
         }}>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
-            Welcome back, {user?.email?.split('@')[0] || 'Creator'}! 👋
+          <div style={{ position: 'absolute', top: -40, right: -40, width: 200, height: 200, background: 'radial-gradient(circle, var(--glow-sm) 0%, transparent 70%)', pointerEvents: 'none' }} />
+          <h2 style={{ fontFamily: 'Bebas Neue', fontSize: 'clamp(1.4rem, 4vw, 2rem)', letterSpacing: '0.05em', marginBottom: '0.4rem' }}>
+            Welcome back, <span className="gradient-text">{userName}</span>! 🎬
           </h2>
-          <p style={{ color: 'rgba(255,255,255,0.6)' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
             Ready to share your next masterpiece with the world?
           </p>
         </div>
 
-        {/* Stats */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
-          {[
-            { label: 'Total Films', value: '3', icon: Film, color: '#8b5cf6' },
-            { label: 'Total Views', value: '2.1K', icon: Eye, color: '#22c55e' },
-            { label: 'Avg Rating', value: '7.9', icon: Star, color: '#fbbf24' },
-            { label: 'This Month', value: '+15%', icon: TrendingUp, color: '#00d4ff' },
-          ].map((stat) => (
-            <div key={stat.label} style={{
-              padding: '1.5rem',
-              backgroundColor: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              borderRadius: '16px',
-            }}>
-              <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: '10px',
-                backgroundColor: `${stat.color}20`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '1rem',
-              }}>
-                <stat.icon style={{ width: '20px', height: '20px', color: stat.color }} />
+        {/* Stats grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+          {STATS.map(({ label, value, Icon, color }) => (
+            <div key={label} className="creator-stat">
+              <div style={{ width: 38, height: 38, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+                <Icon style={{ width: 18, height: 18, color }} />
               </div>
-              <p style={{ fontSize: '1.75rem', fontWeight: 'bold' }}>{stat.value}</p>
-              <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>{stat.label}</p>
+              <p style={{ fontFamily: 'Bebas Neue', fontSize: '2rem', letterSpacing: '0.04em', lineHeight: 1, marginBottom: '0.25rem' }}>
+                {value}
+              </p>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', fontWeight: 500 }}>{label}</p>
             </div>
           ))}
         </div>
 
         {/* My Films */}
-        <div style={{
-          backgroundColor: 'rgba(255,255,255,0.02)',
-          border: '1px solid rgba(255,255,255,0.05)',
-          borderRadius: '16px',
-          padding: '1.5rem',
-        }}>
+        <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)', borderRadius: 18, padding: 'clamp(1.25rem, 3vw, 1.75rem)', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 600 }}>My Films</h3>
-            <Link href="/creator/upload" style={{ color: '#8b5cf6', fontSize: '0.9rem', textDecoration: 'none' }}>
-              + Add New
+            <h3 style={{ fontFamily: 'Bebas Neue', fontSize: '1.3rem', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span className="section-title-bar" style={{ height: '1em' }} />
+              My Films
+            </h3>
+            <Link href="/creator/upload" style={{ textDecoration: 'none' }}>
+              <button className="btn-fire" style={{ padding: '0.45rem 1rem', fontSize: '0.82rem' }}>+ Add New</button>
             </Link>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            {myMovies.map((movie) => (
-              <div key={movie.id} style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                padding: '1rem',
-                backgroundColor: 'rgba(255,255,255,0.02)',
-                borderRadius: '12px',
-              }}>
-                <div style={{ width: '80px', height: '100px', borderRadius: '8px', overflow: 'hidden' }}>
-                  <Image src={movie.poster} alt={movie.title} width={80} height={100} style={{ objectFit: 'cover' }} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <h4 style={{ fontWeight: 600, marginBottom: '0.25rem' }}>{movie.title}</h4>
-                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <Eye style={{ width: '14px', height: '14px' }} /> {movie.views}
-                    </span>
-                    {movie.rating > 0 && (
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: '#fbbf24' }}>
-                        <Star style={{ width: '14px', height: '14px', fill: '#fbbf24' }} /> {movie.rating}
-                      </span>
-                    )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {MOCK_FILMS.map(film => {
+              const ss = STATUS_STYLE[film.status]
+              return (
+                <div key={film.id} style={{
+                  display: 'flex', alignItems: 'center', gap: '1rem',
+                  padding: '1rem', background: 'var(--bg-card)',
+                  border: '1px solid var(--glass-border)', borderRadius: 14,
+                  transition: 'border-color 0.2s',
+                  flexWrap: 'wrap',
+                }}
+                onMouseOver={e => e.currentTarget.style.borderColor = 'var(--glass-border-h)'}
+                onMouseOut={e => e.currentTarget.style.borderColor = 'var(--glass-border)'}
+                >
+                  <div style={{ width: 65, height: 90, borderRadius: 10, overflow: 'hidden', flexShrink: 0, border: '1px solid var(--glass-border)' }}>
+                    <Image src={film.poster} alt={film.title} width={65} height={90} style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
                   </div>
+
+                  <div style={{ flex: 1, minWidth: 120 }}>
+                    <h4 style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '0.4rem', color: 'var(--text-primary)' }}>{film.title}</h4>
+                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <Eye size={12} /> {film.views.toLocaleString()} views
+                      </span>
+                      {film.rating > 0 && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: 'var(--brand-gold)' }}>
+                          <Star size={12} fill="currentColor" /> {film.rating}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <span style={{
+                    display: 'flex', alignItems: 'center', gap: '0.4rem',
+                    padding: '0.32rem 0.8rem', borderRadius: 9999,
+                    fontSize: '0.78rem', fontWeight: 600,
+                    background: ss.bg, color: ss.color, flexShrink: 0,
+                  }}>
+                    {ss.icon}
+                    {film.status.charAt(0).toUpperCase() + film.status.slice(1)}
+                  </span>
+
+                  <button className="btn-ghost" style={{ padding: '0.4rem 1rem', fontSize: '0.8rem', flexShrink: 0 }}>
+                    Edit
+                  </button>
                 </div>
-                <span style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: '20px',
-                  fontSize: '0.8rem',
-                  fontWeight: 500,
-                  backgroundColor: movie.status === 'published' ? 'rgba(34,197,94,0.1)' : movie.status === 'pending' ? 'rgba(245,158,11,0.1)' : 'rgba(255,255,255,0.05)',
-                  color: movie.status === 'published' ? '#22c55e' : movie.status === 'pending' ? '#f59e0b' : 'rgba(255,255,255,0.5)',
-                }}>
-                  {movie.status === 'published' && <CheckCircle style={{ width: '14px', height: '14px' }} />}
-                  {movie.status === 'pending' && <Clock style={{ width: '14px', height: '14px' }} />}
-                  {movie.status === 'draft' && <AlertCircle style={{ width: '14px', height: '14px' }} />}
-                  {movie.status.charAt(0).toUpperCase() + movie.status.slice(1)}
-                </span>
-                <button style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'rgba(139,92,246,0.1)',
-                  border: '1px solid rgba(139,92,246,0.2)',
-                  borderRadius: '8px',
-                  color: '#a78bfa',
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                }}>
-                  Edit
-                </button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </main>

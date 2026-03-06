@@ -1,5 +1,4 @@
 // src/app/(main)/series/page.tsx
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -8,289 +7,167 @@ import { Footer } from '@/components/layout/Footer'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Star, Clock, Play, Loader2 } from 'lucide-react'
-import type { Movie } from '@/types'  // Assuming you can rename or extend to Series if needed
+import { Star, Clock, Play, Tv, Flame, Sparkles } from 'lucide-react'
+import type { Movie } from '@/types'
 
-// For now we reuse Movie type – if series has different fields (e.g. seasons instead of duration), create Series type later
+const ALL_GENRES = ['All', 'Action', 'Comedy', 'Drama', 'Horror', 'Romance', 'Sci-Fi', 'Thriller', 'Mystery', 'Adventure', 'Documentary', 'Fantasy', 'Crime']
 
 export default function SeriesPage() {
-  const [seriesList, setSeriesList] = useState<Movie[]>([])  // Reuse Movie[] for now
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'featured' | 'trending'>('all')
-  const [genreFilter, setGenreFilter] = useState<string>('All')
+  const [series,      setSeries]      = useState<Movie[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [filter,      setFilter]      = useState<'all' | 'featured' | 'trending'>('all')
+  const [genreFilter, setGenreFilter] = useState('All')
 
-  const allGenres = [
-    'All',
-    'Action',
-    'Comedy',
-    'Drama',
-    'Horror',
-    'Romance',
-    'Sci-Fi',
-    'Thriller',
-    'Mystery',
-    'Adventure',
-    'Documentary',
-    'Fantasy',
-    'Crime'
-  ]
-
-  useEffect(() => {
-    loadSeries()
-  }, [filter, genreFilter])
+  useEffect(() => { loadSeries() }, [filter, genreFilter])
 
   const loadSeries = async () => {
     setLoading(true)
     try {
       const supabase = createSupabaseBrowserClient()
-
-      let query = supabase
-        .from('series')               // ← Changed to 'series' table
-        .select('*')
-        .eq('is_published', true)
-        .order('created_at', { ascending: false })
-
-      if (filter === 'featured') {
-        query = query.eq('is_featured', true)
-      } else if (filter === 'trending') {
-        query = query.eq('is_trending', true)
-      }
-
-      if (genreFilter !== 'All') {
-        query = query.contains('genre', [genreFilter])
-      }
-
+      let query = supabase.from('series').select('*').eq('is_published', true).order('created_at', { ascending: false })
+      if (filter === 'featured') query = query.eq('is_featured', true)
+      else if (filter === 'trending') query = query.eq('is_trending', true)
+      if (genreFilter !== 'All') query = query.contains('genre', [genreFilter])
       const { data, error } = await query
-
       if (error) throw error
-
-      setSeriesList(data || [])
-    } catch (error) {
-      console.error('Error loading series:', error)
-      setSeriesList([])
+      setSeries(data || [])
+    } catch (err) {
+      console.error(err)
+      setSeries([])
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0b' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-void)' }}>
       <Navigation />
 
-      <main style={{ paddingTop: '80px', maxWidth: '1400px', margin: '0 auto', padding: '100px 2rem 2rem' }}>
-        <h1 style={{ fontSize: '2.5rem', fontWeight: 'bold', marginBottom: '2rem', color: 'white' }}>
-          All Series
-        </h1>
+      <div style={{ position: 'relative', overflow: 'hidden' }}>
+        <div className="page-banner-gradient" />
+        <div style={{ position: 'absolute', top: '50%', left: '-5%', width: 420, height: 420, background: 'radial-gradient(circle, var(--glow-sm) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-        {/* Filters */}
-        <div style={{ marginBottom: '2rem' }}>
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-            {(['all', 'featured', 'trending'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                style={{
-                  padding: '0.5rem 1rem',
-                  borderRadius: '20px',
-                  border: 'none',
-                  backgroundColor: filter === f ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                  color: filter === f ? '#a78bfa' : 'rgba(255,255,255,0.6)',
-                  cursor: 'pointer',
-                  textTransform: 'capitalize',
-                }}
-              >
-                {f === 'all' ? 'All Series' : f.charAt(0).toUpperCase() + f.slice(1)}
+        <div className="page-hero">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.6rem' }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 10,
+              background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 18px var(--glow-sm)',
+            }}>
+              <Tv style={{ width: 20, height: 20, color: 'white' }} />
+            </div>
+            <h1 className="page-hero-title" style={{ margin: 0 }}>
+              <span className="gradient-text">All</span> Series
+            </h1>
+          </div>
+          <p className="page-hero-sub">
+            {series.length > 0 ? `${series.length} series available` : 'Binge-worthy shows await'}
+          </p>
+
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+            {([
+              { id: 'all',      label: 'All Series', icon: null },
+              { id: 'featured', label: 'Featured',   icon: <Sparkles style={{ width: 13, height: 13 }} /> },
+              { id: 'trending', label: 'Trending',   icon: <Flame    style={{ width: 13, height: 13 }} /> },
+            ] as const).map(({ id, label, icon }) => (
+              <button key={id} onClick={() => setFilter(id)} className={`filter-pill${filter === id ? ' active' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                {icon}{label}
               </button>
             ))}
           </div>
 
-          {/* Genre Filter */}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            {allGenres.map(genre => (
-              <button
-                key={genre}
-                onClick={() => setGenreFilter(genre)}
-                style={{
-                  padding: '0.35rem 0.75rem',
-                  borderRadius: '15px',
-                  border: 'none',
-                  fontSize: '0.85rem',
-                  backgroundColor: genreFilter === genre ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                  color: genreFilter === genre ? '#a78bfa' : 'rgba(255,255,255,0.6)',
-                  cursor: 'pointer',
-                }}
-              >
-                {genre}
-              </button>
+          <div className="filter-bar">
+            {ALL_GENRES.map(g => (
+              <button key={g} onClick={() => setGenreFilter(g)} className={`filter-pill${genreFilter === g ? ' active' : ''}`}>{g}</button>
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Loading State */}
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '4rem' }}>
-            <div style={{
-              width: '50px',
-              height: '50px',
-              border: '3px solid rgba(139, 92, 246, 0.3)',
-              borderTop: '3px solid #8b5cf6',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite',
-              margin: '0 auto',
-            }} />
-            <p style={{ marginTop: '1rem', color: 'rgba(255,255,255,0.5)' }}>Loading series...</p>
+      <div className="container" style={{ paddingBottom: '4rem' }}>
+        {loading ? (
+          <LoadingGrid />
+        ) : series.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="movie-grid">
+            {series.map(s => <SeriesCard key={s.id} serie={s} />)}
           </div>
         )}
-
-        {/* Empty State */}
-        {!loading && seriesList.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '4rem' }}>
-            <p style={{ fontSize: '1.25rem', color: 'rgba(255,255,255,0.5)' }}>
-              No series found. Try changing filters or{' '}
-              <Link href="/admin/upload" style={{ color: '#8b5cf6' }}>upload a new series</Link>.
-            </p>
-          </div>
-        )}
-
-        {/* Series Grid – Thumbnail Sized Cards */}
-        {!loading && seriesList.length > 0 && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))',
-            gap: '1.5rem',
-          }}>
-            {seriesList.map(serie => (
-              <Link key={serie.id} href={`/watch/${serie.slug}`} style={{ textDecoration: 'none' }}>
-                <div
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.02)',
-                    border: '1px solid rgba(255,255,255,0.05)',
-                    borderRadius: '16px',
-                    overflow: 'hidden',
-                    transition: 'all 0.3s',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-8px) scale(1.04)'
-                    e.currentTarget.style.borderColor = 'rgba(139, 92, 246, 0.5)'
-                    e.currentTarget.style.boxShadow = '0 20px 40px rgba(139, 92, 246, 0.15)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0) scale(1)'
-                    e.currentTarget.style.borderColor = 'rgba(255,255,255,0.05)'
-                    e.currentTarget.style.boxShadow = 'none'
-                  }}
-                >
-                  <div style={{ position: 'relative', aspectRatio: '2/3', overflow: 'hidden' }}>
-                    <Image
-                      src={serie.poster_url || 'https://via.placeholder.com/300x450?text=No+Poster'}
-                      alt={serie.title}
-                      fill
-                      style={{ objectFit: 'cover' }}
-                      unoptimized
-                    />
-                    <div
-                      style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.7), transparent)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        opacity: 0,
-                        transition: 'opacity 0.4s ease',
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
-                      onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
-                    >
-                      <div style={{
-                        width: '70px',
-                        height: '70px',
-                        borderRadius: '50%',
-                        background: 'rgba(139, 92, 246, 0.85)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 0 20px rgba(139, 92, 246, 0.5)',
-                        transform: 'scale(0.9)',
-                        transition: 'transform 0.3s',
-                      }}>
-                        <Play style={{ width: '32px', height: '32px', fill: 'white', color: 'white', marginLeft: '4px' }} />
-                      </div>
-                    </div>
-
-                    {/* Badges */}
-                    <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', display: 'flex', gap: '0.4rem' }}>
-                      {serie.is_featured && (
-                        <span style={{
-                          padding: '0.3rem 0.7rem',
-                          backgroundColor: 'rgba(139, 92, 246, 0.9)',
-                          borderRadius: '8px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          color: 'white',
-                        }}>
-                          Featured
-                        </span>
-                      )}
-                      {serie.is_trending && (
-                        <span style={{
-                          padding: '0.3rem 0.7rem',
-                          backgroundColor: 'rgba(239, 68, 68, 0.9)',
-                          borderRadius: '8px',
-                          fontSize: '0.75rem',
-                          fontWeight: 'bold',
-                          color: 'white',
-                        }}>
-                          Trending
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div style={{ padding: '1.1rem' }}>
-                    <h3 style={{ fontWeight: 'bold', marginBottom: '0.6rem', fontSize: '1.15rem', color: 'white' }}>
-                      {serie.title}
-                    </h3>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1.1rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.65)', marginBottom: '0.6rem' }}>
-                      <span>{serie.release_year}</span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                        <Clock style={{ width: '13px', height: '13px' }} />
-                        {serie.duration_minutes ? `${serie.duration_minutes}m` : 'N/A'} {/* or use seasons if available */}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: '#fbbf24' }}>
-                        <Star style={{ width: '13px', height: '13px', fill: '#fbbf24' }} />
-                        {serie.rating || 'N/A'}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                      {serie.genre?.slice(0, 2).map(g => (
-                        <span key={g} style={{
-                          padding: '0.3rem 0.65rem',
-                          backgroundColor: 'rgba(139, 92, 246, 0.18)',
-                          borderRadius: '12px',
-                          fontSize: '0.8rem',
-                          color: '#a78bfa',
-                        }}>
-                          {g}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </main>
+      </div>
 
       <Footer />
+    </div>
+  )
+}
 
-      <style jsx global>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-      `}</style>
+function SeriesCard({ serie }: { serie: Movie }) {
+  return (
+    <Link href={`/watch/${serie.slug}`} style={{ textDecoration: 'none' }}>
+      <div className="movie-card-wrapper">
+        <div className="movie-card">
+          <Image src={serie.poster_url || '/placeholder-poster.jpg'} alt={serie.title} fill style={{ objectFit: 'cover' }} unoptimized />
+          <div className="movie-play-btn">
+            <Play style={{ width: 18, height: 18, fill: 'white', color: 'white', marginLeft: 2 }} />
+          </div>
+          <div className="movie-overlay">
+            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+              {serie.genre?.slice(0, 2).map(g => <span key={g} className="badge badge-fire">{g}</span>)}
+            </div>
+          </div>
+          <div className="card-badge-group">
+            {serie.is_featured && <span className="badge badge-fire">Featured</span>}
+            {serie.is_trending && <span className="badge badge-dim" style={{ background: 'rgba(255,69,0,0.22)', borderColor: 'rgba(255,69,0,0.4)', color: '#FF8C69' }}>🔥 Hot</span>}
+          </div>
+          {/* Series indicator */}
+          <div style={{ position: 'absolute', bottom: '0.6rem', right: '0.6rem', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '0.2rem 0.5rem', fontSize: '0.68rem', color: 'rgba(255,255,255,0.8)', fontWeight: 600 }}>
+            SERIES
+          </div>
+        </div>
+        <div className="movie-card-info">
+          <p className="movie-card-title">{serie.title}</p>
+          <div className="movie-card-meta">
+            <span>{serie.release_year}</span>
+            {serie.duration_minutes && (
+              <><span style={{ opacity: 0.4 }}>·</span><span style={{ display: 'flex', alignItems: 'center', gap: 2 }}><Clock style={{ width: 10, height: 10 }} />{serie.duration_minutes}m</span></>
+            )}
+            {(serie.admin_rating || serie.rating) && (
+              <><span style={{ opacity: 0.4 }}>·</span><span className="movie-card-rating"><Star style={{ width: 10, height: 10, fill: 'currentColor' }} />{serie.admin_rating || serie.rating}</span></>
+            )}
+          </div>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
+function LoadingGrid() {
+  return (
+    <div className="movie-grid">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} style={{ borderRadius: 16, overflow: 'hidden' }}>
+          <div className="skeleton" style={{ aspectRatio: '2/3', borderRadius: 0 }} />
+          <div style={{ padding: '0.8rem', background: 'var(--card-info-bg)' }}>
+            <div className="skeleton" style={{ height: 14, width: '75%', marginBottom: 8 }} />
+            <div className="skeleton" style={{ height: 11, width: '50%' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function EmptyState() {
+  return (
+    <div style={{ textAlign: 'center', padding: 'clamp(4rem, 10vh, 7rem) 1rem' }}>
+      <div style={{ width: 70, height: 70, borderRadius: 18, background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', boxShadow: '0 0 30px var(--glow-md)' }}>
+        <Tv style={{ width: 32, height: 32, color: 'white' }} />
+      </div>
+      <h2 style={{ fontFamily: 'Bebas Neue', fontSize: 'clamp(1.8rem, 5vw, 2.8rem)', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '0.6rem' }}>No Series Found</h2>
+      <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>
+        Try adjusting filters or <Link href="/admin/upload" style={{ color: 'var(--brand-mid)', textDecoration: 'none' }}>upload a series</Link>.
+      </p>
     </div>
   )
 }

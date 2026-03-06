@@ -1,291 +1,205 @@
 // src/components/3d/MovieCard3D.tsx
-
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Play, Star, Clock, Eye, TrendingUp, Sparkles } from 'lucide-react'
+import { Play, Star, Clock, Eye, Sparkles, Flame } from 'lucide-react'
 import type { Movie } from '@/types'
 
 interface MovieCard3DProps {
   movie: Movie
-  index: number
-  variant?: 'default' | 'featured' | 'compact'
+  index?: number
+  /** 'default' = 16:9 wide  |  'poster' = 2:3  |  'compact' = 16:9 shorter */
+  variant?: 'default' | 'featured' | 'compact' | 'poster'
 }
 
-export function MovieCard3D({ movie, index, variant = 'default' }: MovieCard3DProps) {
-  const [isHovered, setIsHovered] = useState(false)
-  const [imageError, setImageError] = useState(false)
+export function MovieCard3D({ movie, index = 0, variant = 'default' }: MovieCard3DProps) {
+  const [hovered,    setHovered]    = useState(false)
+  const [imgError,   setImgError]   = useState(false)
 
-  const cardHeight = variant === 'featured' ? '380px' : variant === 'compact' ? '200px' : '260px'
-  const showBadges = variant !== 'compact'
+  /* ── Aspect & image source ── */
+  const isPoster  = variant === 'poster'
+  const aspectRatio = isPoster ? '2/3' : '16/9'
+
+  // For wide cards prefer backdrop, for poster prefer poster
+  const imgSrc = imgError
+    ? '/placeholder-wide.jpg'
+    : isPoster
+      ? (movie.poster_url || movie.backdrop_url || '/placeholder-poster.jpg')
+      : (movie.backdrop_url || movie.poster_url  || '/placeholder-wide.jpg')
+
+  const showBadges  = variant !== 'compact'
   const showDetails = variant !== 'compact'
 
   return (
-    <Link href={`/watch/${movie.slug}`} style={{ textDecoration: 'none' }}>
+    <Link href={`/watch/${movie.slug}`} style={{ textDecoration: 'none', display: 'block' }}>
       <div
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         style={{
           position: 'relative',
-          borderRadius: '16px',
+          borderRadius: 16,
           overflow: 'hidden',
           cursor: 'pointer',
-          transform: isHovered ? 'translateY(-8px) scale(1.02)' : 'translateY(0) scale(1)',
-          transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-          boxShadow: isHovered 
-            ? '0 20px 40px rgba(139, 92, 246, 0.3), 0 0 60px rgba(139, 92, 246, 0.1)' 
-            : '0 4px 20px rgba(0, 0, 0, 0.3)',
-          background: 'linear-gradient(145deg, rgba(30, 30, 40, 0.9), rgba(15, 15, 20, 0.95))',
-          border: isHovered ? '1px solid rgba(139, 92, 246, 0.5)' : '1px solid rgba(255, 255, 255, 0.05)',
+          transform: hovered ? 'translateY(-8px) scale(1.03)' : 'none',
+          transition: 'all 0.38s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+          boxShadow: hovered
+            ? '0 22px 48px rgba(0,0,0,0.55), 0 0 0 1px var(--glass-border-h), 0 0 38px var(--glow-md)'
+            : '0 4px 18px rgba(0,0,0,0.35)',
+          background: 'var(--bg-card)',
+          border: `1px solid ${hovered ? 'var(--glass-border-h)' : 'rgba(255,255,255,0.05)'}`,
+          willChange: 'transform',
         }}
       >
-        {/* Poster Image */}
-        <div style={{ 
-          position: 'relative', 
-          height: cardHeight,
-          overflow: 'hidden',
-        }}>
-          {movie.poster_url && !imageError ? (
-            <Image
-              src={movie.poster_url}
-              alt={movie.title}
-              fill
-              style={{ 
-                objectFit: 'cover',
-                transition: 'transform 0.5s ease',
-                transform: isHovered ? 'scale(1.1)' : 'scale(1)',
-              }}
-              onError={() => setImageError(true)}
-              unoptimized
-            />
-          ) : (
-            <div style={{
-              width: '100%',
-              height: '100%',
-              background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Play style={{ width: '48px', height: '48px', color: 'rgba(255,255,255,0.2)' }} />
-            </div>
-          )}
+        {/* Image */}
+        <div style={{ position: 'relative', aspectRatio, overflow: 'hidden' }}>
+          <Image
+            src={imgSrc}
+            alt={movie.title}
+            fill
+            style={{
+              objectFit: 'cover',
+              transition: 'transform 0.65s ease, filter 0.45s',
+              transform: hovered ? 'scale(1.10)' : 'scale(1)',
+              filter: hovered ? 'brightness(0.52) saturate(1.2)' : 'brightness(1)',
+            }}
+            onError={() => setImgError(true)}
+            unoptimized
+          />
 
-          {/* Gradient Overlay */}
+          {/* Gradient scrim */}
           <div style={{
-            position: 'absolute',
-            inset: 0,
-            background: isHovered 
-              ? 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(139, 92, 246, 0.2) 50%, transparent 100%)'
-              : 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)',
-            transition: 'background 0.3s ease',
+            position: 'absolute', inset: 0,
+            background: hovered
+              ? 'linear-gradient(to top, rgba(12,10,7,0.96) 0%, rgba(255,98,0,0.12) 50%, transparent 100%)'
+              : 'linear-gradient(to top, rgba(12,10,7,0.88) 0%, rgba(12,10,7,0.22) 55%, transparent 100%)',
+            transition: 'background 0.35s ease',
           }} />
 
-          {/* Badges */}
-          {showBadges && (
-            <div style={{ 
-              position: 'absolute', 
-              top: '0.75rem', 
-              left: '0.75rem', 
-              display: 'flex', 
-              gap: '0.5rem',
-              flexWrap: 'wrap',
+          {/* Play button */}
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%',
+            transform: hovered
+              ? 'translate(-50%, -50%) scale(1)'
+              : 'translate(-50%, -50%) scale(0.55)',
+            opacity: hovered ? 1 : 0,
+            transition: 'all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)',
+            zIndex: 5,
+          }}>
+            <div style={{
+              width: 54, height: 54, borderRadius: '50%',
+              background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 0 35px var(--glow-md)',
+              border: '2px solid rgba(255,255,255,0.22)',
             }}>
+              <Play style={{ width: 22, height: 22, color: 'white', fill: 'white', marginLeft: 3 }} />
+            </div>
+          </div>
+
+          {/* Top badges */}
+          {showBadges && (
+            <div className="card-badge-group">
               {movie.is_featured && (
-                <span style={{
-                  padding: '0.25rem 0.6rem',
-                  backgroundColor: 'rgba(139, 92, 246, 0.9)',
-                  borderRadius: '6px',
-                  fontSize: '0.65rem',
-                  fontWeight: 'bold',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  color: 'white',
-                  backdropFilter: 'blur(4px)',
-                }}>
-                  <Sparkles style={{ width: '10px', height: '10px' }} />
-                  Featured
+                <span className="badge badge-fire" style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <Sparkles style={{ width: 9, height: 9 }} />Featured
                 </span>
               )}
               {movie.is_trending && (
-                <span style={{
-                  padding: '0.25rem 0.6rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.9)',
-                  borderRadius: '6px',
-                  fontSize: '0.65rem',
-                  fontWeight: 'bold',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                  color: 'white',
-                  backdropFilter: 'blur(4px)',
-                }}>
-                  <TrendingUp style={{ width: '10px', height: '10px' }} />
-                  Trending
+                <span className="badge" style={{ background: 'rgba(255,69,0,0.22)', border: '1px solid rgba(255,69,0,0.45)', color: '#FF8C69', display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <Flame style={{ width: 9, height: 9 }} />Trending
                 </span>
               )}
             </div>
           )}
 
-          {/* Rating Badge */}
-          {movie.rating > 0 && (
+          {/* Rating badge */}
+          {(movie.rating > 0 || movie.admin_rating) && (
             <div style={{
-              position: 'absolute',
-              top: '0.75rem',
-              right: '0.75rem',
-              padding: '0.35rem 0.6rem',
-              backgroundColor: 'rgba(0, 0, 0, 0.7)',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              backdropFilter: 'blur(4px)',
-              border: '1px solid rgba(251, 191, 36, 0.3)',
+              position: 'absolute', top: '0.6rem', right: '0.6rem',
+              background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)',
+              borderRadius: 7, padding: '0.22rem 0.55rem',
+              display: 'flex', alignItems: 'center', gap: 3,
+              border: '1px solid rgba(255,183,51,0.28)',
             }}>
-              <Star style={{ width: '12px', height: '12px', color: '#fbbf24', fill: '#fbbf24' }} />
-              <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#fbbf24' }}>
-                {movie.rating.toFixed(1)}
+              <Star style={{ width: 11, height: 11, color: 'var(--brand-gold)', fill: 'var(--brand-gold)' }} />
+              <span style={{ fontSize: '0.73rem', fontWeight: 700, color: 'var(--brand-gold)' }}>
+                {(movie.admin_rating || movie.rating)?.toFixed?.(1) ?? (movie.admin_rating || movie.rating)}
               </span>
             </div>
           )}
 
-          {/* Play Button on Hover */}
+          {/* Bottom content overlay */}
           <div style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            transform: isHovered ? 'translate(-50%, -50%) scale(1)' : 'translate(-50%, -50%) scale(0)',
-            opacity: isHovered ? 1 : 0,
-            transition: 'all 0.3s ease',
-            zIndex: 10,
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            padding: variant === 'compact' ? '0.7rem' : '1rem',
+            transform: hovered ? 'translateY(0)' : 'translateY(6px)',
+            transition: 'transform 0.3s ease',
           }}>
-            <div style={{
-              width: '60px',
-              height: '60px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.9), rgba(168, 85, 247, 0.9))',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 30px rgba(139, 92, 246, 0.5)',
-              border: '2px solid rgba(255, 255, 255, 0.2)',
-            }}>
-              <Play style={{ width: '24px', height: '24px', color: 'white', fill: 'white', marginLeft: '3px' }} />
-            </div>
-          </div>
-
-          {/* Content Overlay */}
-          <div style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            padding: '1rem',
-            transform: isHovered ? 'translateY(0)' : 'translateY(10px)',
-            opacity: isHovered ? 1 : 0.9,
-            transition: 'all 0.3s ease',
-          }}>
-            {/* Title */}
             <h3 style={{
-              fontSize: variant === 'featured' ? '1.1rem' : '0.95rem',
-              fontWeight: 'bold',
-              marginBottom: '0.5rem',
-              color: 'white',
-              textShadow: '0 2px 4px rgba(0,0,0,0.5)',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              fontSize: variant === 'featured' ? '1rem' : '0.9rem',
+              fontWeight: 700, color: 'var(--text-primary)',
+              marginBottom: showDetails ? '0.4rem' : 0,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              textShadow: '0 2px 8px rgba(0,0,0,0.7)',
             }}>
               {movie.title}
             </h3>
 
-            {/* Meta Info */}
             {showDetails && (
               <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                fontSize: '0.75rem',
-                color: 'rgba(255, 255, 255, 0.7)',
-                marginBottom: '0.5rem',
+                display: 'flex', alignItems: 'center', gap: '0.6rem',
+                fontSize: '0.72rem', color: 'rgba(255,255,255,0.65)',
+                marginBottom: hovered ? '0.5rem' : 0,
+                transition: 'margin 0.3s',
               }}>
-                <span>{movie.release_year}</span>
+                {movie.release_year && <span>{movie.release_year}</span>}
                 {movie.duration_minutes > 0 && (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Clock style={{ width: '11px', height: '11px' }} />
-                    {movie.duration_minutes}m
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Clock style={{ width: 10, height: 10 }} />{movie.duration_minutes}m
                   </span>
                 )}
-                <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Eye style={{ width: '11px', height: '11px' }} />
-                  {movie.view_count >= 1000 
-                    ? `${(movie.view_count / 1000).toFixed(1)}K` 
-                    : movie.view_count}
-                </span>
+                {(movie.view_count ?? 0) > 0 && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                    <Eye style={{ width: 10, height: 10 }} />
+                    {movie.view_count >= 1000
+                      ? `${(movie.view_count / 1000).toFixed(1)}K`
+                      : movie.view_count}
+                  </span>
+                )}
               </div>
             )}
 
-            {/* Genre Tags */}
+            {/* Genre tags — slide in on hover */}
             {showDetails && movie.genre && movie.genre.length > 0 && (
               <div style={{
-                display: 'flex',
-                gap: '0.4rem',
-                flexWrap: 'wrap',
-                opacity: isHovered ? 1 : 0,
-                transform: isHovered ? 'translateY(0)' : 'translateY(10px)',
-                transition: 'all 0.3s ease 0.1s',
+                display: 'flex', gap: '0.35rem', flexWrap: 'wrap',
+                opacity: hovered ? 1 : 0,
+                transform: hovered ? 'translateY(0)' : 'translateY(8px)',
+                transition: 'all 0.3s ease 0.08s',
+                maxHeight: hovered ? 60 : 0, overflow: 'hidden',
               }}>
-                {movie.genre.slice(0, 2).map((genre) => (
-                  <span 
-                    key={genre}
-                    style={{
-                      padding: '0.2rem 0.5rem',
-                      backgroundColor: 'rgba(139, 92, 246, 0.3)',
-                      borderRadius: '4px',
-                      fontSize: '0.65rem',
-                      color: '#c4b5fd',
-                      border: '1px solid rgba(139, 92, 246, 0.4)',
-                    }}
-                  >
-                    {genre}
-                  </span>
+                {movie.genre.slice(0, 2).map((g) => (
+                  <span key={g} className="badge badge-fire" style={{ fontSize: '0.65rem' }}>{g}</span>
                 ))}
                 {movie.language && (
-                  <span style={{
-                    padding: '0.2rem 0.5rem',
-                    backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                    borderRadius: '4px',
-                    fontSize: '0.65rem',
-                    color: '#fbbf24',
-                    border: '1px solid rgba(245, 158, 11, 0.3)',
-                  }}>
-                    {movie.language}
-                  </span>
+                  <span className="badge badge-dim" style={{ fontSize: '0.65rem' }}>{movie.language}</span>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Glow Effect */}
+        {/* Outer glow ring on hover */}
         <div style={{
-          position: 'absolute',
-          inset: '-2px',
-          borderRadius: '18px',
-          background: isHovered 
-            ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(245, 158, 11, 0.2))' 
+          position: 'absolute', inset: -2, borderRadius: 18, zIndex: -1,
+          background: hovered
+            ? 'linear-gradient(135deg, rgba(255,98,0,0.38), rgba(255,183,51,0.18))'
             : 'transparent',
-          opacity: isHovered ? 1 : 0,
-          transition: 'all 0.3s ease',
-          zIndex: -1,
-          filter: 'blur(8px)',
+          opacity: hovered ? 1 : 0,
+          transition: 'all 0.35s ease',
+          filter: 'blur(10px)',
         }} />
       </div>
     </Link>
