@@ -1,316 +1,413 @@
+// src/app/(main)/watch/[slug]/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Image from 'next/image'
-import Link from 'next/link'
-import {
-  Play, ArrowLeft, Heart, Plus, Share2, Star, Clock,
-  Globe, Film, ChevronRight,
-} from 'lucide-react'
+import { ArrowLeft, Heart, Share2, Star, Clock, Calendar, Globe, Eye, User } from 'lucide-react'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 import { Navigation } from '@/components/layout/Navigation'
 import { Footer } from '@/components/layout/Footer'
-import { YouTubePlayer } from '@/components/video/YouTubePlayer'
-import { MovieCarousel } from '@/components/movies/MovieCarousel'
-import { createSupabaseBrowserClient } from '@/lib/supabase'
-import type { Movie } from '@/types'
+import Link from 'next/link'
+
+interface Actor {
+  id: string; name: string; image_url: string | null; character_name?: string | null
+}
+interface Movie {
+  id: string; title: string; slug: string; description: string | null
+  youtube_id: string | null; youtube_url: string | null
+  poster_url: string | null; backdrop_url: string | null
+  release_year: number | null; duration_minutes: number | null
+  language: string | null; director: string | null
+  actors: string[] | null; genre: string[] | null
+  rating: number | null; admin_rating: number | null
+  view_count: number | null; is_published: boolean
+}
+interface SimilarMovie {
+  id: string; title: string; slug: string; poster_url: string | null
+  release_year: number | null; admin_rating: number | null; rating: number | null
+}
 
 export default function WatchPage() {
   const params   = useParams()
   const router   = useRouter()
   const slug     = params?.slug as string
-
-  const [movie,   setMovie]   = useState<Movie | null>(null)
-  const [similar, setSimilar] = useState<Movie[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState<string | null>(null)
-  const [fav,     setFav]     = useState(false)
-
   const supabase = createSupabaseBrowserClient()
 
-  useEffect(() => { if (slug) loadMovie() }, [slug])
+  const [movie,       setMovie]       = useState<Movie | null>(null)
+  const [actors,      setActors]      = useState<Actor[]>([])
+  const [similar,     setSimilar]     = useState<SimilarMovie[]>([])
+  const [isFav,       setIsFav]       = useState(false)
+  const [loading,     setLoading]     = useState(true)
+  const [viewTracked, setViewTracked] = useState(false)
+  const viewTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const playerRef     = useRef<HTMLIFrameElement | null>(null)
 
-  const loadMovie = async () => {
-    setLoading(true); setError(null)
+  useEffect(() => {
+    if (slug) load()
+    return () => { if (viewTimerRef.current) clearTimeout(viewTimerRef.current) }
+  }, [slug])
+
+  const load = async () => {
+    setLoading(true)
     try {
-      const { data, error: err } = await supabase
-        .from('movies').select('*')
-        .eq('slug', slug).eq('is_published', true).single()
-      if (err || !data) throw new Error(err?.message || 'Movie not found')
-      setMovie(data as Movie)
-      supabase.from('movies').update({ view_count: (data.view_count || 0) + 1 }).eq('id', data.id)
-      if (data.genre?.length) {
-        const { data: sim } = await supabase
-          .from('movies').select('*')
-          .eq('is_published', true).neq('id', data.id)
-          .overlaps('genre', data.genre).limit(10)
-        setSimilar(sim || [])
+      const { data: m, error } = await supabase
+        .from('movies').select('*').eq('slug', slug).single()
+      if (error || !m) { router.push('/movies'); return }
+      setMovie(m)
+
+      const { data: actorRows } = await supabase
+        .from('movie_actors')
+        .select('actor_id, character_name, actors(id, name, image_url)')
+        .eq('movie_id', m.id).limit(12)
+      if (actorRows?.length) {
+        setActors(actorRows.map((r: any) => ({
+          id: r.actors.id, name: r.actors.name,
+          image_url: r.actors.image_url, character_name: r.character_name,
+        })))
       }
-    } catch (e: any) {
-      setError(e.message || 'Failed to load')
-    } finally {
-      setLoading(false)
+
+      if (m.genre?.length) {
+        const { data: sim } = await supabase
+          .from('movies').select('id,title,slug,poster_url,release_year,admin_rating,rating')
+          .eq('is_published', true).contains('genre', [m.genre[0]])
+          .neq('id', m.id).limit(8)
+        setSimilar(sim ?? [])
+      }
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: fav } = await supabase.from('favorites')
+          .select('id').eq('user_id', user.id).eq('movie_id', m.id).maybeSingle()
+        setIsFav(!!fav)
+      }
+
+      viewTimerRef.current = setTimeout(() => trackView(m.id), 30_000)
+    } finally { setLoading(false) }
+  }
+
+  const trackView = async (movieId: string) => {
+    if (viewTracked) return
+    setViewTracked(true)
+    try {
+      const { error: rpcErr } = await supabase.rpc('increment_view_count', { movie_id: movieId })
+      if (rpcErr) throw rpcErr
+    } catch {
+      const { data } = await supabase.from('movies').select('view_count').eq('id', movieId).single()
+      await supabase.from('movies').update({ view_count: (data?.view_count || 0) + 1 }).eq('id', movieId)
+    }
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase.from('watch_history').upsert({
+        user_id: user.id, movie_id: movieId,
+        last_watched: new Date().toISOString(),
+        progress_seconds: 30, completed: false,
+      }, { onConflict: 'user_id,movie_id' })
     }
   }
 
-  const extractYTId = (url?: string) => {
-    if (!url) return null
-    return url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/)?.[1] ?? null
+  const toggleFav = async () => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user || !movie) return
+    if (isFav) {
+      await supabase.from('favorites').delete().eq('user_id', user.id).eq('movie_id', movie.id)
+      setIsFav(false)
+    } else {
+      await supabase.from('favorites').insert({ user_id: user.id, movie_id: movie.id })
+      setIsFav(true)
+    }
   }
 
-  const videoId = movie ? (movie.youtube_id || extractYTId(movie.youtube_url)) : null
+  const getEmbed = (m: Movie) => {
+    if (m.youtube_id) return `https://www.youtube.com/embed/${m.youtube_id}?autoplay=1&rel=0&modestbranding=1`
+    if (m.youtube_url) {
+      const match = m.youtube_url.match(/(?:v=|youtu\.be\/)([^&?/]+)/)
+      if (match) return `https://www.youtube.com/embed/${match[1]}?autoplay=1&rel=0&modestbranding=1`
+    }
+    return null
+  }
 
-  /* ── Loading ── */
   if (loading) {
     return (
       <div className="loading-screen">
         <div className="loading-ring" />
-        <p className="loading-text">Loading</p>
+        <p className="loading-text">Loading Film</p>
       </div>
     )
   }
+  if (!movie) return null
 
-  /* ── Error ── */
-  if (error || !movie) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--bg-void)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
-        <div style={{ textAlign: 'center', maxWidth: 480 }}>
-          <div style={{
-            width: 80, height: 80, borderRadius: 20,
-            background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 1.5rem',
-            boxShadow: '0 0 40px var(--glow-md)',
-          }}>
-            <Film style={{ width: 38, height: 38, color: 'white' }} />
-          </div>
-          <h1 style={{ fontFamily: 'Bebas Neue', fontSize: 'clamp(2rem, 6vw, 3rem)', letterSpacing: '0.05em', color: 'var(--text-primary)', marginBottom: '0.75rem' }}>
-            {error || 'Not Found'}
-          </h1>
-          <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '1rem', lineHeight: 1.6 }}>
-            This content is unavailable or has been removed.
-          </p>
-          <Link href="/movies">
-            <button className="btn-fire" style={{ gap: '0.6rem' }}>
-              <ArrowLeft size={17} /> Back to Movies
-            </button>
-          </Link>
-        </div>
-      </div>
-    )
-  }
+  const embedUrl      = getEmbed(movie)
+  const displayRating = movie.admin_rating || movie.rating
+
+  const MetaTag = ({ children }: { children: React.ReactNode }) => (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+      fontSize: '0.8rem', color: 'var(--text-muted)',
+    }}>{children}</span>
+  )
+
+  const SectionHeading = ({ children }: { children: React.ReactNode }) => (
+    <h3 style={{
+      fontFamily: 'Bebas Neue, sans-serif', fontSize: '1.12rem',
+      letterSpacing: '0.08em', marginBottom: '1rem',
+      display: 'flex', alignItems: 'center', gap: '0.5rem',
+    }}>
+      <span style={{
+        display: 'inline-block', width: 3, height: '1em',
+        background: 'linear-gradient(180deg, var(--brand-core), var(--brand-gold))',
+        borderRadius: 2,
+      }} />
+      {children}
+    </h3>
+  )
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-void)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-void)', color: 'var(--text-primary)' }}>
       <Navigation />
 
-      {/* ════════════════════════════════════════
-          VIDEO SECTION
-          ════════════════════════════════════════ */}
-      <div style={{ background: '#000', paddingTop: 66 /* nav height */ }}>
-        <div style={{ maxWidth: 1440, margin: '0 auto', padding: '0 clamp(1rem, 3vw, 2rem) 0' }}>
+      {/* ════════════════════════════════
+          COMPACT CINEMATIC PLAYER
+          ════════════════════════════════ */}
+      <div style={{
+        background: 'var(--bg-void)',
+        paddingTop: 'clamp(1.5rem, 3vh, 2.5rem)',
+      }}>
+        <div style={{
+          maxWidth: 860,
+          margin: '0 auto',
+          padding: '0 clamp(1rem, 4vw, 2rem)',
+        }}>
+        {embedUrl ? (
+          <div style={{
+            width: '100%', aspectRatio: '16/9', position: 'relative',
+            borderRadius: 16, overflow: 'hidden', lineHeight: 0,
+            boxShadow: '0 8px 48px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,140,0,0.15)',
+          }}>
+            <iframe
+              ref={playerRef}
+              src={embedUrl}
+              title={movie.title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              allowFullScreen
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 'none', display: 'block' }}
+            />
+          </div>
+        ) : (
+          <div style={{
+            width: '100%', aspectRatio: '16/9', position: 'relative',
+            borderRadius: 16, overflow: 'hidden',
+            background: 'linear-gradient(135deg, #0a0a0f, #12121e)',
+            boxShadow: '0 8px 48px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,140,0,0.12)',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center', gap: '0.75rem',
+          }}>
+            {movie.poster_url && (
+              <div style={{ position: 'absolute', inset: 0, opacity: 0.12 }}>
+                <Image src={movie.poster_url} alt="" fill style={{ objectFit: 'cover' }} />
+              </div>
+            )}
+            <div style={{
+              position: 'relative', width: 64, height: 64, borderRadius: '50%',
+              background: 'rgba(255,98,0,0.1)', border: '1px solid rgba(255,98,0,0.2)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Eye style={{ width: 26, height: 26, color: 'var(--brand-core)', opacity: 0.5 }} />
+            </div>
+            <p style={{ position: 'relative', color: 'var(--text-muted)', fontSize: '0.88rem' }}>No video available</p>
+          </div>
+        )}
+        </div>
+      </div>
 
-          {/* Back button */}
-          <div style={{ paddingTop: '1.25rem', paddingBottom: '0.75rem' }}>
-            <button
-              onClick={() => router.back()}
-              className="btn-ghost"
-              style={{ padding: '0.55rem 1.2rem', fontSize: '0.875rem', gap: '0.5rem' }}
-            >
-              <ArrowLeft size={15} /> Back
-            </button>
+      {/* ════════════════════════════════
+          CONTENT AREA
+          ════════════════════════════════ */}
+      <div style={{
+        maxWidth: 1100, margin: '0 auto',
+        padding: 'clamp(2.5rem, 6vh, 4rem) clamp(1rem, 4vw, 2.5rem) clamp(4rem, 10vh, 7rem)',
+      }}>
+
+        {/* Back */}
+        <button
+          onClick={() => router.back()}
+          className="btn-ghost"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+            fontSize: '0.8rem', marginBottom: '2.25rem', padding: '0.45rem 1rem',
+          }}
+        >
+          <ArrowLeft style={{ width: 13, height: 13 }} /> Back
+        </button>
+
+        {/* Title + actions */}
+        <div style={{
+          display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'space-between', gap: '1.5rem',
+          flexWrap: 'wrap', marginBottom: '1rem',
+        }}>
+          <div>
+            <h1 style={{
+              fontFamily: 'Bebas Neue, sans-serif',
+              fontSize: 'clamp(1.8rem, 4.5vw, 3rem)',
+              letterSpacing: '0.04em', lineHeight: 1,
+              marginBottom: '0.9rem',
+            }}>
+              {movie.title}
+            </h1>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.9rem', alignItems: 'center' }}>
+              {movie.release_year    && <MetaTag><Calendar style={{ width: 12, height: 12 }} />{movie.release_year}</MetaTag>}
+              {movie.duration_minutes && <MetaTag><Clock style={{ width: 12, height: 12 }} />{movie.duration_minutes} min</MetaTag>}
+              {movie.language        && <MetaTag><Globe style={{ width: 12, height: 12 }} />{movie.language}</MetaTag>}
+              {displayRating         && (
+                <MetaTag>
+                  <Star style={{ width: 12, height: 12, fill: '#FFB733', color: '#FFB733' }} />
+                  <span style={{ color: '#FFB733' }}>{displayRating}/10</span>
+                </MetaTag>
+              )}
+              {movie.view_count !== null && (
+                <MetaTag><Eye style={{ width: 12, height: 12 }} />{(movie.view_count || 0).toLocaleString()} views</MetaTag>
+              )}
+            </div>
           </div>
 
-          {/* Video player */}
-          <div className="video-wrapper" style={{ marginBottom: '0' }}>
-            {videoId ? (
-              <YouTubePlayer videoId={videoId} title={movie.title} />
+          <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+            <button
+              onClick={toggleFav}
+              style={{
+                width: 40, height: 40, borderRadius: 10,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: isFav ? 'rgba(248,113,113,0.1)' : 'var(--bg-elevated)',
+                border: `1px solid ${isFav ? 'rgba(248,113,113,0.3)' : 'var(--glass-border)'}`,
+                cursor: 'pointer', transition: 'all 0.2s',
+              }}
+            >
+              <Heart style={{ width: 16, height: 16, fill: isFav ? '#f87171' : 'none', color: isFav ? '#f87171' : 'var(--text-muted)' }} />
+            </button>
+            <button
+              onClick={() => navigator.share?.({ title: movie.title, url: window.location.href })}
+              style={{
+                width: 40, height: 40, borderRadius: 10,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)',
+                cursor: 'pointer', color: 'var(--text-muted)',
+              }}
+            >
+              <Share2 style={{ width: 16, height: 16 }} />
+            </button>
+          </div>
+        </div>
+
+        {/* Genres */}
+        {movie.genre?.length ? (
+          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+            {movie.genre.map(g => <span key={g} className="badge badge-fire">{g}</span>)}
+          </div>
+        ) : null}
+
+        {/* Divider */}
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '1.5rem 0' }} />
+
+        {/* Description */}
+        {movie.description && (
+          <p style={{
+            color: 'var(--text-secondary)', lineHeight: 1.8,
+            fontSize: '0.93rem', marginBottom: '2rem', maxWidth: 740,
+          }}>
+            {movie.description}
+          </p>
+        )}
+
+        {/* Director */}
+        {movie.director && (
+          <div style={{ marginBottom: '2rem' }}>
+            <p style={{
+              fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 700,
+              letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: '0.3rem',
+            }}>Director</p>
+            <p style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{movie.director}</p>
+          </div>
+        )}
+
+        {/* Cast */}
+        {(actors.length > 0 || (movie.actors && movie.actors.length > 0)) && (
+          <div style={{ marginBottom: '3rem' }}>
+            <SectionHeading>Cast</SectionHeading>
+            {actors.length > 0 ? (
+              <div style={{ display: 'flex', gap: '1.2rem', overflowX: 'auto', paddingBottom: '0.75rem' }}>
+                {actors.map(actor => (
+                  <div key={actor.id} style={{ flexShrink: 0, width: 96, textAlign: 'center' }}>
+                    <div style={{
+                      width: 78, height: 78, borderRadius: '50%', margin: '0 auto 0.55rem',
+                      overflow: 'hidden', border: '2px solid var(--glass-border)',
+                      background: 'var(--bg-elevated)',
+                    }}>
+                      {actor.image_url
+                        ? <Image src={actor.image_url} alt={actor.name} width={78} height={78}
+                            style={{ objectFit: 'cover', width: '100%', height: '100%' }} unoptimized />
+                        : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <User style={{ width: 28, height: 28, color: 'var(--text-muted)' }} />
+                          </div>
+                      }
+                    </div>
+                    <p style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.3 }}>{actor.name}</p>
+                    {actor.character_name && (
+                      <p style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{actor.character_name}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
             ) : (
-              <div style={{
-                width: '100%', height: '100%',
-                background: 'linear-gradient(135deg, var(--bg-elevated), var(--bg-deep))',
-                display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center',
-                color: 'var(--text-muted)', gap: '1rem',
-              }}>
-                <div style={{
-                  width: 70, height: 70, borderRadius: 18,
-                  background: 'var(--glass-bg)', border: '1px solid var(--glass-border)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  <Play size={30} style={{ opacity: 0.5 }} />
-                </div>
-                <p style={{ fontSize: '1.1rem', fontWeight: 600 }}>Video Not Available</p>
-                <p style={{ fontSize: '0.875rem', opacity: 0.6 }}>No valid video source found</p>
+              <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                {movie.actors?.map(name => (
+                  <span key={name} style={{
+                    display: 'flex', alignItems: 'center', gap: '0.35rem',
+                    padding: '0.32rem 0.8rem', borderRadius: 9999,
+                    background: 'var(--glass-bg)', border: '1px solid var(--glass-border)',
+                    fontSize: '0.8rem', color: 'var(--text-secondary)',
+                  }}>
+                    <User style={{ width: 11, height: 11 }} /> {name}
+                  </span>
+                ))}
               </div>
             )}
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* ════════════════════════════════════════
-          MOVIE INFO SECTION
-          ════════════════════════════════════════ */}
-      <div style={{ background: 'var(--bg-void)' }}>
-        <div style={{ maxWidth: 1440, margin: '0 auto', padding: 'clamp(2rem, 4vh, 3.5rem) clamp(1rem, 3vw, 2rem)' }}>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'clamp(180px, 22vw, 300px) 1fr',
-            gap: 'clamp(1.5rem, 4vw, 3rem)',
-            alignItems: 'flex-start',
-          }}>
-
-            {/* ── Poster ── */}
-            <div style={{
-              borderRadius: 16, overflow: 'hidden',
-              border: '1px solid var(--glass-border)',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.55), 0 0 30px var(--glow-sm)',
-              flexShrink: 0,
-            }}>
-              <Image
-                src={movie.poster_url || movie.backdrop_url || '/placeholder-poster.jpg'}
-                alt={movie.title}
-                width={300} height={450}
-                style={{ width: '100%', height: 'auto', objectFit: 'cover', display: 'block' }}
-                priority unoptimized
-              />
-            </div>
-
-            {/* ── Info ── */}
-            <div>
-
-              {/* Category pill */}
-              {(movie.is_trending || movie.is_featured) && (
-                <div style={{ marginBottom: '0.85rem' }}>
-                  {movie.is_trending && <span className="badge badge-fire" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>🔥 Trending</span>}
-                  {movie.is_featured && !movie.is_trending && <span className="badge badge-fire">✦ Featured</span>}
-                </div>
-              )}
-
-              {/* Title */}
-              <h1 style={{
-                fontFamily: 'Bebas Neue, sans-serif',
-                fontSize: 'clamp(2rem, 5.5vw, 4.5rem)',
-                letterSpacing: '0.03em', lineHeight: 0.92,
-                color: 'var(--text-primary)', marginBottom: '1.1rem',
-              }}>
-                <span className="gradient-text-warm">{movie.title}</span>
-              </h1>
-
-              {/* Meta row */}
-              <div style={{
-                display: 'flex', flexWrap: 'wrap', alignItems: 'center',
-                gap: '0.65rem', marginBottom: '1.25rem',
-                fontSize: '0.9rem', color: 'var(--text-secondary)',
-              }}>
-                {movie.release_year && <span>{movie.release_year}</span>}
-                {movie.duration_minutes > 0 && (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Clock size={14} />{movie.duration_minutes} min
-                  </span>
-                )}
-                {movie.language && (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Globe size={14} />{movie.language}
-                  </span>
-                )}
-                {(movie.admin_rating || movie.rating) && (
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'var(--brand-gold)', fontWeight: 700 }}>
-                    <Star size={14} fill="var(--brand-gold)" />
-                    {movie.admin_rating || movie.rating}
-                  </span>
-                )}
-              </div>
-
-              {/* Genres */}
-              {movie.genre?.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.75rem' }}>
-                  {movie.genre.map(g => (
-                    <span key={g} className="badge badge-fire">{g}</span>
-                  ))}
-                </div>
-              )}
-
-              {/* Description */}
-              {movie.description && (
-                <p style={{
-                  fontSize: 'clamp(0.9rem, 1.8vw, 1.05rem)',
-                  lineHeight: 1.8, color: 'var(--text-secondary)',
-                  marginBottom: '2rem', maxWidth: 720,
-                }}>
-                  {movie.description}
-                </p>
-              )}
-
-              {/* Action buttons */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                {videoId && (
-                  <a href={`#player`} onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-                    <button className="btn-fire" style={{ gap: '0.6rem', padding: '0.9rem 2rem' }}>
-                      <Play size={17} fill="white" /> Play Now
-                    </button>
-                  </a>
-                )}
-
-                <button
-                  onClick={() => setFav(v => !v)}
-                  className="btn-ghost"
-                  style={{
-                    gap: '0.55rem',
-                    borderColor: fav ? '#EF4444' : 'var(--glass-border)',
-                    color: fav ? '#EF4444' : 'var(--text-secondary)',
-                    background: fav ? 'rgba(239,68,68,0.10)' : 'var(--glass-bg)',
-                  }}
-                >
-                  <Heart size={17} fill={fav ? '#EF4444' : 'none'} />
-                  {fav ? 'Favorited' : 'Favorite'}
-                </button>
-
-                <button className="btn-ghost" style={{ gap: '0.55rem' }}>
-                  <Plus size={17} /> Watchlist
-                </button>
-
-                <button className="btn-ghost" style={{ gap: '0.55rem' }}>
-                  <Share2 size={17} /> Share
-                </button>
-              </div>
+        {/* Similar */}
+        {similar.length > 0 && (
+          <div>
+            <SectionHeading>You May Also Like</SectionHeading>
+            <div style={{ display: 'flex', gap: '0.85rem', overflowX: 'auto', paddingBottom: '0.75rem' }}>
+              {similar.map((m: SimilarMovie) => (
+                <Link key={m.id} href={`/watch/${m.slug}`} style={{ textDecoration: 'none', flexShrink: 0, width: 128 }}>
+                  <div className="movie-card-wrapper">
+                    <div className="movie-card" style={{ aspectRatio: '2/3' }}>
+                      <Image src={m.poster_url || '/placeholder-poster.jpg'} alt={m.title} fill style={{ objectFit: 'cover' }} unoptimized />
+                    </div>
+                    <div className="movie-card-info">
+                      <p className="movie-card-title" style={{ fontSize: '0.74rem' }}>{m.title}</p>
+                      <div className="movie-card-meta">
+                        {m.release_year && <span>{m.release_year}</span>}
+                        {(m.admin_rating || m.rating) && (
+                          <><span style={{ opacity: 0.4 }}>·</span>
+                          <span className="movie-card-rating">
+                            <Star style={{ width: 9, height: 9, fill: 'currentColor' }} />
+                            {m.admin_rating || m.rating}
+                          </span></>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
             </div>
           </div>
-        </div>
+        )}
       </div>
-
-      {/* ════════════════════════════════════════
-          SIMILAR MOVIES
-          ════════════════════════════════════════ */}
-      {similar.length > 0 && (
-        <div style={{ borderTop: '1px solid var(--glass-border)' }}>
-          <div className="container">
-            <MovieCarousel
-              title="You Might Also Like"
-              emoji="🎬"
-              movies={similar}
-              cardMode="wide"
-              viewAllHref="/movies"
-            />
-          </div>
-        </div>
-      )}
 
       <Footer />
-
-      <style jsx global>{`
-        @media (max-width: 640px) {
-          /* Stack poster + info vertically on mobile */
-          .watch-info-grid {
-            grid-template-columns: 1fr !important;
-          }
-          .watch-poster {
-            max-width: 220px;
-            margin: 0 auto;
-          }
-        }
-      `}</style>
     </div>
   )
 }

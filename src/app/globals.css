@@ -382,13 +382,19 @@ body {
   content: ''; display: block; width: 22px; height: 2px;
   background: linear-gradient(90deg, var(--brand-core), var(--brand-gold)); border-radius: 2px;
 }
+/* Alias used in homepage */
+.hero-category {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--brand-gold); margin-bottom: 0.9rem;
+}
 .hero-title {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(2.6rem, 7.5vw, 5.8rem);
-  letter-spacing: 0.03em; line-height: 0.93;
+  font-size: clamp(1.9rem, 4vw, 3.4rem);
+  letter-spacing: 0.04em; line-height: 1.02;
   color: var(--text-primary);
-  text-shadow: 0 4px 40px rgba(0,0,0,0.55);
-  margin-bottom: 1rem;
+  text-shadow: 0 3px 24px rgba(0,0,0,0.55);
+  margin-bottom: 0.85rem;
 }
 .hero-meta {
   display: flex; align-items: center; flex-wrap: wrap;
@@ -420,12 +426,13 @@ body {
 /* ================================================================
    CONTENT SECTIONS
    ================================================================ */
-.content-area { position: relative; z-index: 10; margin-top: -80px; padding-bottom: clamp(3rem, 8vh, 6rem); }
+.content-area { position: relative; z-index: 10; padding-top: 0; padding-bottom: clamp(3rem, 8vh, 6rem); }
 .container { max-width: 1500px; margin: 0 auto; padding: 0 clamp(1rem, 4vw, 2.5rem); }
 .content-section { padding: clamp(1.5rem, 3.5vh, 3rem) 0; }
 .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: clamp(1rem, 2.5vh, 1.75rem); gap: 1rem; }
 .section-title { font-family: 'Outfit', sans-serif; font-size: clamp(1.1rem, 2.8vw, 1.55rem); font-weight: 800; color: var(--text-primary); display: flex; align-items: center; gap: 0.55rem; }
 .section-title-bar { display: inline-block; width: 4px; height: 1.15em; background: linear-gradient(180deg, var(--brand-core), var(--brand-gold)); border-radius: 2px; flex-shrink: 0; }
+.section-title-accent { display: inline-block; width: 4px; height: 1.15em; background: linear-gradient(180deg, var(--brand-core), var(--brand-gold)); border-radius: 2px; flex-shrink: 0; }
 .section-view-all { font-size: 0.82rem; font-weight: 600; color: var(--brand-mid); text-decoration: none; display: flex; align-items: center; gap: 0.2rem; white-space: nowrap; transition: color 0.2s; flex-shrink: 0; }
 .section-view-all:hover { color: var(--brand-gold); }
 
@@ -588,8 +595,74 @@ body {
 /* ================================================================
    WATCH PAGE
    ================================================================ */
-.video-wrapper { width: 100%; max-width: 1180px; margin: 0 auto; aspect-ratio: 16/9; border-radius: 16px; overflow: hidden; border: 1px solid var(--glass-border); box-shadow: 0 20px 70px rgba(0,0,0,0.6), 0 0 40px var(--glow-sm); }
-[data-theme="light"] .video-wrapper { box-shadow: 0 12px 40px rgba(80,40,0,0.14), 0 0 25px var(--glow-sm); }
+
+/* Full-bleed cinematic player section */
+.watch-player-section {
+  width: 100%;
+  background: #000;
+  position: relative;
+  padding: 0;
+}
+.watch-player-inner {
+  max-width: 100%;
+  margin: 0 auto;
+  position: relative;
+  line-height: 0; /* removes inline gap */
+}
+.video-wrapper {
+  width: 100%;
+  aspect-ratio: 16/9;
+  position: relative;
+  overflow: hidden;
+  background: #000;
+  border-bottom: 1px solid rgba(255,140,0,0.12);
+  box-shadow: 0 8px 60px rgba(0,0,0,0.8);
+}
+
+/* Watch page content area below player */
+.watch-content {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: clamp(2rem, 5vh, 3.5rem) clamp(1rem, 4vw, 2rem) clamp(3rem, 8vh, 5rem);
+}
+.watch-back-btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-size: 0.82rem; margin-bottom: 2rem;
+  padding: 0.5rem 1rem;
+}
+.watch-title-block { margin-bottom: 1.75rem; }
+.watch-title {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: clamp(1.8rem, 4.5vw, 3rem);
+  letter-spacing: 0.04em; line-height: 1;
+  margin-bottom: 0.75rem;
+}
+.watch-meta-row {
+  display: flex; flex-wrap: wrap; gap: 0.85rem;
+  font-size: 0.83rem; color: var(--text-muted);
+  align-items: center;
+}
+.watch-meta-item { display: flex; align-items: center; gap: 0.3rem; }
+.watch-rating { color: #FFB733; }
+.watch-actions { display: flex; gap: 0.5rem; }
+.watch-action-btn {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-elevated); border: 1px solid var(--glass-border);
+  cursor: pointer; transition: all 0.2s; color: var(--text-muted);
+}
+.watch-action-btn:hover { border-color: rgba(255,140,0,0.4); color: var(--brand-gold); }
+.watch-section-heading {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 1.15rem; letter-spacing: 0.07em;
+  display: flex; align-items: center; gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+.watch-section-bar {
+  display: inline-block; width: 3px; height: 1em;
+  background: linear-gradient(180deg, var(--brand-core), var(--brand-gold));
+  border-radius: 2px;
+}
 
 /* ================================================================
    CREATOR DASHBOARD
@@ -609,7 +682,7 @@ body {
    MOBILE RESPONSIVE
    ================================================================ */
 @media (max-width: 768px) {
-  .hero-title    { font-size: clamp(2rem, 9vw, 2.8rem); line-height: 0.96; }
+  .hero-title    { font-size: clamp(1.5rem, 7vw, 2.2rem); line-height: 1.02; }
   .hero-content  { padding: 0 1.2rem 2.8rem; }
   .hero-desc     { -webkit-line-clamp: 2; font-size: 0.84rem; }
   .hero-meta     { font-size: 0.78rem; gap: 0.45rem; }
@@ -617,7 +690,7 @@ body {
   .nav-inner     { height: 56px; padding: 0 1rem; }
   .nav-logo-text { font-size: 1.2rem; }
   .section-title { font-size: 1.05rem; }
-  .content-area  { margin-top: -35px; }
+  .content-area  { padding-top: 0; }
   .movie-grid    { grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
   .movie-grid.poster-grid { grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
   .movie-card-info { padding: 0.55rem 0.65rem; }

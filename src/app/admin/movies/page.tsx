@@ -1,1005 +1,524 @@
 // src/app/admin/movies/page.tsx
-
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import {
-  Film, Plus, Search, Filter, MoreVertical, Edit, Trash2, Eye, EyeOff,
-  Star, TrendingUp, Sparkles, ArrowLeft, ChevronLeft, ChevronRight,
-  CheckCircle, XCircle, Clock, Calendar, Globe, Loader2, RefreshCw,
-  Download, Upload, BarChart3, Crown, Home, Settings, Users, Tv, LogOut,
-  Menu, X, Check, AlertTriangle
+  Film, Plus, Search, Filter, Edit, Trash2, Eye,
+  Star, TrendingUp, Sparkles, ChevronLeft, ChevronRight,
+  CheckCircle, Clock, Loader2, RefreshCw, Upload, BarChart3,
+  Home, Settings, Users, LogOut, Menu, X, AlertTriangle,
+  Check, Save, Video, Tv,
 } from 'lucide-react'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
-import type { Movie } from '@/types'
 
-interface MovieWithStats extends Movie {
-  selected?: boolean
+/* ── Types ── */
+interface Movie {
+  id: string
+  title: string
+  slug: string
+  description: string | null
+  youtube_id: string | null
+  youtube_url: string | null
+  poster_url: string | null
+  backdrop_url: string | null
+  trailer_url: string | null
+  video_url: string | null
+  release_year: number | null
+  duration_minutes: number | null
+  language: string | null
+  director: string | null
+  actors: string[] | null
+  genre: string[] | null
+  rating: number | null
+  admin_rating: number | null
+  view_count: number
+  is_featured: boolean
+  is_trending: boolean
+  is_published: boolean
+  uploaded_by: string | null
+  created_at: string
 }
 
+interface EditForm {
+  title: string
+  slug: string
+  description: string
+  youtube_id: string
+  youtube_url: string
+  poster_url: string
+  backdrop_url: string
+  trailer_url: string
+  release_year: string
+  duration_minutes: string
+  language: string
+  director: string
+  actors: string
+  genre: string
+  admin_rating: string
+  is_published: boolean
+  is_featured: boolean
+  is_trending: boolean
+}
+
+/* ── Sidebar — complete, consistent across all admin pages ── */
 const sidebarLinks = [
-  { label: 'Dashboard', href: '/admin', icon: BarChart3 },
-  { label: 'Movies', href: '/admin/movies', icon: Film, active: true },
-  { label: 'Series', href: '/admin/series', icon: Tv },
-  { label: 'Upload', href: '/admin/upload', icon: Upload },
-  { label: 'Users', href: '/admin/users', icon: Users },
-  { label: 'Settings', href: '/admin/settings', icon: Settings },
+  { label: 'Dashboard', href: '/admin',          icon: BarChart3  },
+  { label: 'Movies',    href: '/admin/movies',    icon: Film,      active: true },
+  { label: 'Series',    href: '/admin/series',    icon: Tv         },
+  { label: 'Upload',    href: '/admin/upload',    icon: Upload     },
+  { label: 'Users',     href: '/admin/users',     icon: Users      },
+  { label: 'Analytics', href: '/admin/analytics', icon: TrendingUp },
+  { label: 'Settings',  href: '/admin/settings',  icon: Settings   },
 ]
 
+const LANGUAGES = ['English','Hindi','Tamil','Telugu','Malayalam','Kannada','Bengali','Punjabi','Marathi','Other']
+const GENRES    = ['Action','Adventure','Animation','Comedy','Crime','Documentary','Drama','Fantasy','Horror','Mystery','Romance','Sci-Fi','Thriller','Western']
+
 export default function AdminMoviesPage() {
-  const router = useRouter()
+  const router   = useRouter()
   const supabase = createSupabaseBrowserClient()
 
-  // State
-  const [movies, setMovies] = useState<MovieWithStats[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'draft'>('all')
-  const [filterFeatured, setFilterFeatured] = useState<'all' | 'featured' | 'trending'>('all')
-  const [sortBy, setSortBy] = useState<'newest' | 'oldest' | 'title' | 'rating' | 'views'>('newest')
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalCount, setTotalCount] = useState(0)
+  const [movies,         setMovies]         = useState<Movie[]>([])
+  const [loading,        setLoading]        = useState(true)
+  const [searchQuery,    setSearchQuery]    = useState('')
+  const [filterStatus,   setFilterStatus]   = useState<'all'|'published'|'draft'>('all')
+  const [filterFeatured, setFilterFeatured] = useState<'all'|'featured'|'trending'>('all')
+  const [sortBy,         setSortBy]         = useState<'newest'|'oldest'|'title'|'rating'|'views'>('newest')
+  const [currentPage,    setCurrentPage]    = useState(1)
+  const [totalCount,     setTotalCount]     = useState(0)
   const [selectedMovies, setSelectedMovies] = useState<string[]>([])
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [movieToDelete, setMovieToDelete] = useState<Movie | null>(null)
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
-  const [showFilters, setShowFilters] = useState(false)
+  const [actionLoading,  setActionLoading]  = useState<string | null>(null)
+  const [sidebarOpen,    setSidebarOpen]    = useState(true)
+  const [showFilters,    setShowFilters]    = useState(false)
+  const [liveIndicator,  setLive]           = useState(false)
+  const [toast,          setToast]          = useState<{msg:string;type:'ok'|'err'}|null>(null)
 
-  const itemsPerPage = 10
+  const [deleteModal,    setDeleteModal]    = useState(false)
+  const [movieToDelete,  setMovieToDelete]  = useState<Movie | null>(null)
+
+  const [editModal,      setEditModal]      = useState(false)
+  const [editingMovie,   setEditingMovie]   = useState<Movie | null>(null)
+  const [editForm,       setEditForm]       = useState<EditForm | null>(null)
+  const [editLoading,    setEditLoading]    = useState(false)
+  const [editSuccess,    setEditSuccess]    = useState(false)
+  const [editTab,        setEditTab]        = useState<'basic'|'media'|'meta'|'flags'>('basic')
+
+  const ITEMS = 12
+  const channelRef = useRef<any>(null)
 
   useEffect(() => {
     loadMovies()
   }, [searchQuery, filterStatus, filterFeatured, sortBy, currentPage])
 
+  useEffect(() => {
+    setupRealtime()
+    return () => { channelRef.current?.unsubscribe() }
+  }, [])
+
+  const showToast = (msg: string, type: 'ok'|'err' = 'ok') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3500)
+  }
+
+  /* ── Realtime ── */
+  const setupRealtime = () => {
+    channelRef.current = supabase
+      .channel('movies-admin-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'movies' }, () => {
+        setLive(true)
+        setTimeout(() => setLive(false), 2000)
+        loadMovies()
+      })
+      .subscribe()
+  }
+
+  /* ── Load ── */
   const loadMovies = async () => {
     setLoading(true)
     try {
-      let query = supabase
-        .from('movies')
-        .select('*', { count: 'exact' })
+      let q = supabase.from('movies').select('*', { count: 'exact' })
 
-      // Search filter
-      if (searchQuery) {
-        query = query.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%`)
-      }
+      if (searchQuery)             q = q.or(`title.ilike.%${searchQuery}%,description.ilike.%${searchQuery}%,director.ilike.%${searchQuery}%`)
+      if (filterStatus === 'published') q = q.eq('is_published', true)
+      if (filterStatus === 'draft')     q = q.eq('is_published', false)
+      if (filterFeatured === 'featured') q = q.eq('is_featured', true)
+      if (filterFeatured === 'trending') q = q.eq('is_trending', true)
 
-      // Status filter
-      if (filterStatus === 'published') {
-        query = query.eq('is_published', true)
-      } else if (filterStatus === 'draft') {
-        query = query.eq('is_published', false)
-      }
-
-      // Featured filter
-      if (filterFeatured === 'featured') {
-        query = query.eq('is_featured', true)
-      } else if (filterFeatured === 'trending') {
-        query = query.eq('is_trending', true)
-      }
-
-      // Sorting
       switch (sortBy) {
-        case 'newest':
-          query = query.order('created_at', { ascending: false })
-          break
-        case 'oldest':
-          query = query.order('created_at', { ascending: true })
-          break
-        case 'title':
-          query = query.order('title', { ascending: true })
-          break
-        case 'rating':
-          query = query.order('rating', { ascending: false })
-          break
-        case 'views':
-          query = query.order('view_count', { ascending: false })
-          break
+        case 'newest': q = q.order('created_at',  { ascending: false }); break
+        case 'oldest': q = q.order('created_at',  { ascending: true  }); break
+        case 'title':  q = q.order('title',        { ascending: true  }); break
+        case 'rating': q = q.order('admin_rating', { ascending: false }); break
+        case 'views':  q = q.order('view_count',   { ascending: false }); break
       }
 
-      // Pagination
-      const from = (currentPage - 1) * itemsPerPage
-      const to = from + itemsPerPage - 1
-      query = query.range(from, to)
+      const from = (currentPage - 1) * ITEMS
+      q = q.range(from, from + ITEMS - 1)
 
-      const { data, error, count } = await query
-
+      const { data, error, count } = await q
       if (error) throw error
-
       setMovies(data || [])
       setTotalCount(count || 0)
-    } catch (error) {
-      console.error('Error loading movies:', error)
+    } catch (err) {
+      console.error(err)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleTogglePublish = async (movie: Movie) => {
-    setActionLoading(movie.id)
-    try {
-      const { error } = await supabase
-        .from('movies')
-        .update({ is_published: !movie.is_published })
-        .eq('id', movie.id)
-
-      if (error) throw error
-
-      setMovies(prev => prev.map(m => 
-        m.id === movie.id ? { ...m, is_published: !m.is_published } : m
-      ))
-    } catch (error) {
-      console.error('Error toggling publish:', error)
-      alert('Failed to update movie status')
-    } finally {
-      setActionLoading(null)
-    }
+  /* ── Quick toggles ── */
+  const toggle = async (movie: Movie, field: 'is_published'|'is_featured'|'is_trending') => {
+    setActionLoading(movie.id + field)
+    const { error } = await supabase.from('movies').update({ [field]: !movie[field] }).eq('id', movie.id)
+    if (!error) setMovies(prev => prev.map(m => m.id === movie.id ? { ...m, [field]: !m[field] } : m))
+    setActionLoading(null)
   }
 
-  const handleToggleFeatured = async (movie: Movie) => {
-    setActionLoading(movie.id)
-    try {
-      const { error } = await supabase
-        .from('movies')
-        .update({ is_featured: !movie.is_featured })
-        .eq('id', movie.id)
-
-      if (error) throw error
-
-      setMovies(prev => prev.map(m => 
-        m.id === movie.id ? { ...m, is_featured: !m.is_featured } : m
-      ))
-    } catch (error) {
-      console.error('Error toggling featured:', error)
-      alert('Failed to update movie')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  const handleToggleTrending = async (movie: Movie) => {
-    setActionLoading(movie.id)
-    try {
-      const { error } = await supabase
-        .from('movies')
-        .update({ is_trending: !movie.is_trending })
-        .eq('id', movie.id)
-
-      if (error) throw error
-
-      setMovies(prev => prev.map(m => 
-        m.id === movie.id ? { ...m, is_trending: !m.is_trending } : m
-      ))
-    } catch (error) {
-      console.error('Error toggling trending:', error)
-      alert('Failed to update movie')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  const handleDeleteMovie = async () => {
+  /* ── Delete ── */
+  const doDelete = async () => {
     if (!movieToDelete) return
-
     setActionLoading(movieToDelete.id)
-    try {
-      const { error } = await supabase
-        .from('movies')
-        .delete()
-        .eq('id', movieToDelete.id)
-
-      if (error) throw error
-
+    const { error } = await supabase.from('movies').delete().eq('id', movieToDelete.id)
+    if (!error) {
       setMovies(prev => prev.filter(m => m.id !== movieToDelete.id))
-      setTotalCount(prev => prev - 1)
-      setShowDeleteModal(false)
-      setMovieToDelete(null)
-    } catch (error) {
-      console.error('Error deleting movie:', error)
-      alert('Failed to delete movie')
-    } finally {
-      setActionLoading(null)
+      setTotalCount(p => p - 1)
+      showToast(`"${movieToDelete.title}" deleted.`, 'err')
     }
+    setDeleteModal(false)
+    setMovieToDelete(null)
+    setActionLoading(null)
   }
 
-  const handleBulkDelete = async () => {
-    if (selectedMovies.length === 0) return
-
-    if (!confirm(`Are you sure you want to delete ${selectedMovies.length} movies?`)) return
-
+  /* ── Bulk ── */
+  const bulkDelete = async () => {
+    if (!confirm(`Delete ${selectedMovies.length} movies?`)) return
     setActionLoading('bulk')
-    try {
-      const { error } = await supabase
-        .from('movies')
-        .delete()
-        .in('id', selectedMovies)
-
-      if (error) throw error
-
-      setMovies(prev => prev.filter(m => !selectedMovies.includes(m.id)))
-      setTotalCount(prev => prev - selectedMovies.length)
-      setSelectedMovies([])
-    } catch (error) {
-      console.error('Error bulk deleting:', error)
-      alert('Failed to delete movies')
-    } finally {
-      setActionLoading(null)
-    }
+    await supabase.from('movies').delete().in('id', selectedMovies)
+    setMovies(prev => prev.filter(m => !selectedMovies.includes(m.id)))
+    setTotalCount(p => p - selectedMovies.length)
+    setSelectedMovies([])
+    setActionLoading(null)
+    showToast('Bulk delete complete.', 'err')
   }
 
-  const handleBulkPublish = async (publish: boolean) => {
-    if (selectedMovies.length === 0) return
-
+  const bulkPublish = async (pub: boolean) => {
     setActionLoading('bulk')
+    await supabase.from('movies').update({ is_published: pub }).in('id', selectedMovies)
+    setMovies(prev => prev.map(m => selectedMovies.includes(m.id) ? { ...m, is_published: pub } : m))
+    setSelectedMovies([])
+    setActionLoading(null)
+    showToast(pub ? 'Bulk published.' : 'Bulk unpublished.')
+  }
+
+  /* ── Open Edit ── */
+  const openEdit = (movie: Movie) => {
+    setEditingMovie(movie)
+    setEditForm({
+      title:            movie.title,
+      slug:             movie.slug,
+      description:      movie.description  || '',
+      youtube_id:       movie.youtube_id   || '',
+      youtube_url:      movie.youtube_url  || '',
+      poster_url:       movie.poster_url   || '',
+      backdrop_url:     movie.backdrop_url || '',
+      trailer_url:      movie.trailer_url  || '',
+      release_year:     movie.release_year?.toString()     || '',
+      duration_minutes: movie.duration_minutes?.toString() || '',
+      language:         movie.language     || '',
+      director:         movie.director     || '',
+      actors:           (movie.actors || []).join(', '),
+      genre:            (movie.genre  || []).join(', '),
+      admin_rating:     movie.admin_rating?.toString() || '',
+      is_published:     movie.is_published,
+      is_featured:      movie.is_featured,
+      is_trending:      movie.is_trending,
+    })
+    setEditTab('basic')
+    setEditSuccess(false)
+    setEditModal(true)
+  }
+
+  /* ── Save Edit ── */
+  const saveEdit = async () => {
+    if (!editingMovie || !editForm) return
+    setEditLoading(true)
     try {
-      const { error } = await supabase
-        .from('movies')
-        .update({ is_published: publish })
-        .in('id', selectedMovies)
-
+      const payload: Record<string,any> = {
+        title:            editForm.title.trim(),
+        slug:             editForm.slug.trim() || editForm.title.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-'),
+        description:      editForm.description.trim()  || null,
+        youtube_id:       editForm.youtube_id.trim()   || null,
+        youtube_url:      editForm.youtube_url.trim()  || null,
+        poster_url:       editForm.poster_url.trim()   || null,
+        backdrop_url:     editForm.backdrop_url.trim() || null,
+        trailer_url:      editForm.trailer_url.trim()  || null,
+        release_year:     editForm.release_year     ? parseInt(editForm.release_year)     : null,
+        duration_minutes: editForm.duration_minutes ? parseInt(editForm.duration_minutes) : null,
+        language:         editForm.language.trim()  || null,
+        director:         editForm.director.trim()  || null,
+        actors:           editForm.actors ? editForm.actors.split(',').map(s=>s.trim()).filter(Boolean) : [],
+        genre:            editForm.genre  ? editForm.genre.split(',').map(s=>s.trim()).filter(Boolean)  : [],
+        admin_rating:     editForm.admin_rating ? parseFloat(editForm.admin_rating) : null,
+        is_published:     editForm.is_published,
+        is_featured:      editForm.is_featured,
+        is_trending:      editForm.is_trending,
+        updated_at:       new Date().toISOString(),
+      }
+      const { error } = await supabase.from('movies').update(payload).eq('id', editingMovie.id)
       if (error) throw error
-
-      setMovies(prev => prev.map(m => 
-        selectedMovies.includes(m.id) ? { ...m, is_published: publish } : m
-      ))
-      setSelectedMovies([])
-    } catch (error) {
-      console.error('Error bulk updating:', error)
-      alert('Failed to update movies')
+      setMovies(prev => prev.map(m => m.id === editingMovie.id ? { ...m, ...payload } : m))
+      setEditSuccess(true)
+      showToast(`"${editForm.title}" saved!`)
+      setTimeout(() => { setEditModal(false); setEditSuccess(false) }, 900)
+    } catch (err: any) {
+      showToast('Save failed: ' + (err.message || err), 'err')
     } finally {
-      setActionLoading(null)
+      setEditLoading(false)
     }
   }
 
-  const handleSelectAll = () => {
-    if (selectedMovies.length === movies.length) {
-      setSelectedMovies([])
-    } else {
-      setSelectedMovies(movies.map(m => m.id))
-    }
-  }
-
-  const handleSelectMovie = (id: string) => {
-    setSelectedMovies(prev => 
-      prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
-    )
-  }
-
-  const totalPages = Math.ceil(totalCount / itemsPerPage)
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
+  const totalPages = Math.ceil(totalCount / ITEMS)
+  const ef  = editForm
+  const setEf = (patch: Partial<EditForm>) => setEditForm(prev => prev ? { ...prev, ...patch } : prev)
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#0a0a0b' }}>
-      {/* Sidebar */}
-      <aside style={{
-        width: isSidebarOpen ? '260px' : '80px',
-        backgroundColor: '#0f0f12',
-        borderRight: '1px solid rgba(255,255,255,0.05)',
-        display: 'flex',
-        flexDirection: 'column',
-        transition: 'width 0.3s ease',
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        bottom: 0,
-        zIndex: 40,
-      }}>
-        {/* Logo */}
-        <div style={{
-          padding: '1.5rem',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-        }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, #8b5cf6, #f59e0b)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <Crown style={{ width: '20px', height: '20px', color: 'white' }} />
+    <div style={{ display:'flex', minHeight:'100vh', background:'var(--bg-void)', color:'var(--text-primary)' }}>
+
+      {/* ══ SIDEBAR ══ */}
+      <aside style={{ width: sidebarOpen ? 260 : 76, flexShrink:0, background:'rgba(8,8,14,0.98)', borderRight:'1px solid rgba(255,98,0,0.1)', display:'flex', flexDirection:'column', position:'fixed', top:0, left:0, bottom:0, zIndex:40, transition:'width 0.3s ease', overflow:'hidden' }}>
+        <div style={{ padding:'1.35rem', borderBottom:'1px solid rgba(255,98,0,0.1)', display:'flex', alignItems:'center', gap:'0.75rem', flexShrink:0 }}>
+          <div style={{ width:40, height:40, borderRadius:10, overflow:'hidden', flexShrink:0, border:'1px solid rgba(255,98,0,0.3)' }}>
+            <Image src="/images/logo.jpg" alt="RE" width={40} height={40} style={{ objectFit:'cover', width:'100%', height:'100%' }} />
           </div>
-          {isSidebarOpen && (
+          {sidebarOpen && (
             <div>
-              <span style={{ fontWeight: 'bold', fontSize: '1.1rem', color: 'white' }}>ROY Admin</span>
-              <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)' }}>Management Panel</p>
+              <p style={{ fontFamily:'Bebas Neue,sans-serif', fontSize:'1rem', letterSpacing:'0.08em', lineHeight:1 }}>
+                <span className="gradient-text">ROY</span>
+                <span style={{ color:'rgba(255,255,255,0.4)', marginLeft:4, fontSize:'0.7rem', fontFamily:'Outfit,sans-serif' }}>Admin</span>
+              </p>
+              <p style={{ fontSize:'0.65rem', color:'rgba(255,255,255,0.28)', lineHeight:1 }}>Management Panel</p>
             </div>
           )}
         </div>
 
-        {/* Navigation */}
-        <nav style={{ flex: 1, padding: '1rem 0.75rem' }}>
-          {sidebarLinks.map((link) => (
-            <Link key={link.href} href={link.href} style={{ textDecoration: 'none' }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                padding: '0.75rem 1rem',
-                borderRadius: '10px',
-                marginBottom: '0.25rem',
-                backgroundColor: link.active ? 'rgba(139, 92, 246, 0.15)' : 'transparent',
-                border: link.active ? '1px solid rgba(139, 92, 246, 0.3)' : '1px solid transparent',
-                color: link.active ? '#a78bfa' : 'rgba(255,255,255,0.6)',
-                transition: 'all 0.2s ease',
-                cursor: 'pointer',
-              }}>
-                <link.icon style={{ width: '20px', height: '20px', flexShrink: 0 }} />
-                {isSidebarOpen && <span style={{ fontSize: '0.9rem' }}>{link.label}</span>}
+        <nav style={{ flex:1, padding:'0.75rem', overflowY:'auto' }}>
+          {sidebarLinks.map(({ label, href, icon: Icon, active }) => (
+            <Link key={href} href={href} style={{ textDecoration:'none' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', padding:'0.72rem 0.9rem', borderRadius:10, marginBottom:'0.2rem', background: active ? 'rgba(255,98,0,0.14)' : 'transparent', border:`1px solid ${active ? 'rgba(255,140,0,0.3)' : 'transparent'}`, color: active ? '#FFB733' : 'rgba(255,255,255,0.5)', cursor:'pointer', fontSize:'0.88rem', fontWeight:600, transition:'all 0.18s' }}>
+                <Icon style={{ width:18, height:18, flexShrink:0 }} />
+                {sidebarOpen && <span>{label}</span>}
               </div>
             </Link>
           ))}
         </nav>
 
-        {/* Back to Site */}
-        <div style={{ padding: '0.75rem' }}>
-          <Link href="/" style={{ textDecoration: 'none' }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.75rem',
-              padding: '0.75rem 1rem',
-              borderRadius: '10px',
-              backgroundColor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.6)',
-              cursor: 'pointer',
-            }}>
-              <Home style={{ width: '20px', height: '20px', flexShrink: 0 }} />
-              {isSidebarOpen && <span style={{ fontSize: '0.9rem' }}>Back to Site</span>}
+        <div style={{ padding:'0.5rem 0.75rem' }}>
+          <Link href="/" style={{ textDecoration:'none' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', padding:'0.65rem 0.9rem', borderRadius:10, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)', color:'rgba(255,255,255,0.45)', fontSize:'0.85rem', fontWeight:600 }}>
+              <Home style={{ width:17, height:17, flexShrink:0 }} />
+              {sidebarOpen && 'Back to Site'}
             </div>
           </Link>
         </div>
 
-        {/* Logout */}
-        <div style={{ padding: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-          <button
-            onClick={handleLogout}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: isSidebarOpen ? 'flex-start' : 'center',
-              gap: '0.75rem',
-              padding: '0.75rem 1rem',
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              border: '1px solid rgba(239, 68, 68, 0.2)',
-              borderRadius: '10px',
-              color: '#f87171',
-              cursor: 'pointer',
-              fontSize: '0.9rem',
-            }}
-          >
-            <LogOut style={{ width: '18px', height: '18px' }} />
-            {isSidebarOpen && 'Logout'}
+        <div style={{ padding:'0.75rem', borderTop:'1px solid rgba(255,98,0,0.08)' }}>
+          <button onClick={async () => { await supabase.auth.signOut(); router.push('/login') }}
+            style={{ width:'100%', display:'flex', alignItems:'center', justifyContent: sidebarOpen ? 'flex-start' : 'center', gap:'0.65rem', padding:'0.65rem 0.9rem', background:'rgba(239,68,68,0.09)', border:'1px solid rgba(239,68,68,0.2)', borderRadius:10, color:'#f87171', cursor:'pointer', fontSize:'0.85rem', fontWeight:600 }}>
+            <LogOut style={{ width:16, height:16 }} />
+            {sidebarOpen && 'Logout'}
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main style={{
-        flex: 1,
-        marginLeft: isSidebarOpen ? '260px' : '80px',
-        transition: 'margin-left 0.3s ease',
-      }}>
-        {/* Header */}
-        <header style={{
-          position: 'sticky',
-          top: 0,
-          backgroundColor: 'rgba(10, 10, 11, 0.95)',
-          backdropFilter: 'blur(10px)',
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-          padding: '1rem 2rem',
-          zIndex: 30,
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <button
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                style={{
-                  padding: '0.5rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                {isSidebarOpen ? <X style={{ width: '20px', height: '20px' }} /> : <Menu style={{ width: '20px', height: '20px' }} />}
-              </button>
-              <div>
-                <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'white' }}>Movies</h1>
-                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)' }}>
-                  Manage your movie collection
-                </p>
-              </div>
-            </div>
+      {/* ══ MAIN ══ */}
+      <main style={{ flex:1, marginLeft: sidebarOpen ? 260 : 76, transition:'margin-left 0.3s ease', minWidth:0 }}>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <button
-                onClick={loadMovies}
-                disabled={loading}
-                style={{
-                  padding: '0.6rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
-                  color: 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                <RefreshCw style={{ 
-                  width: '18px', 
-                  height: '18px',
-                  animation: loading ? 'spin 1s linear infinite' : 'none',
-                }} />
-              </button>
-              <Link href="/admin/upload">
-                <button style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.6rem 1.25rem',
-                  background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)',
-                  border: 'none',
-                  borderRadius: '10px',
-                  color: 'white',
-                  fontSize: '0.9rem',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}>
-                  <Plus style={{ width: '18px', height: '18px' }} />
-                  Add Movie
-                </button>
-              </Link>
+        {/* Header */}
+        <header style={{ position:'sticky', top:0, zIndex:30, background:'rgba(5,5,7,0.92)', backdropFilter:'blur(16px)', borderBottom:'1px solid rgba(255,98,0,0.1)', padding:'0.9rem 2rem', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'1rem' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
+            <button onClick={() => setSidebarOpen(s => !s)} className="icon-btn">
+              {sidebarOpen ? <X style={{ width:18, height:18 }} /> : <Menu style={{ width:18, height:18 }} />}
+            </button>
+            <div>
+              <div style={{ display:'flex', alignItems:'center', gap:'0.65rem' }}>
+                <h1 style={{ fontFamily:'Bebas Neue,sans-serif', fontSize:'1.6rem', letterSpacing:'0.06em', lineHeight:1 }}>
+                  <span className="gradient-text">Movies</span>
+                </h1>
+                {/* Live indicator */}
+                <div style={{ display:'flex', alignItems:'center', gap:'0.35rem', padding:'0.2rem 0.55rem', background: liveIndicator ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.04)', border:`1px solid ${liveIndicator ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.08)'}`, borderRadius:9999, transition:'all 0.3s' }}>
+                  <span style={{ width:6, height:6, borderRadius:'50%', background: liveIndicator ? '#4ADE80' : 'rgba(255,255,255,0.3)', animation: liveIndicator ? 'livePulse 1s ease infinite' : 'none' }} />
+                  <span style={{ fontSize:'0.65rem', fontWeight:700, color: liveIndicator ? '#4ADE80' : 'rgba(255,255,255,0.3)', letterSpacing:'0.05em' }}>LIVE</span>
+                </div>
+              </div>
+              <p style={{ fontSize:'0.75rem', color:'var(--text-muted)' }}>{totalCount} total films</p>
             </div>
+          </div>
+          <div style={{ display:'flex', gap:'0.65rem', alignItems:'center' }}>
+            <button onClick={loadMovies} disabled={loading} className="icon-btn" title="Refresh">
+              <RefreshCw style={{ width:16, height:16, animation: loading ? 'spin 1s linear infinite' : 'none' }} />
+            </button>
+            <Link href="/admin/upload">
+              <button className="btn-fire" style={{ display:'flex', alignItems:'center', gap:'0.4rem', padding:'0.6rem 1.2rem', fontSize:'0.88rem' }}>
+                <Plus style={{ width:16, height:16 }} /> Add Movie
+              </button>
+            </Link>
           </div>
         </header>
 
-        {/* Content */}
-        <div style={{ padding: '2rem' }}>
-          {/* Stats Cards */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '1rem',
-            marginBottom: '2rem',
-          }}>
-            <div style={{
-              padding: '1.25rem',
-              backgroundColor: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              borderRadius: '12px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <Film style={{ width: '20px', height: '20px', color: '#8b5cf6' }} />
-                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Total Movies</span>
+        <div style={{ padding:'2rem' }}>
+
+          {/* Stats */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:'1rem', marginBottom:'1.75rem' }}>
+            {[
+              { label:'Total',     val: totalCount,                                color:'#FF8C00', icon: Film        },
+              { label:'Published', val: movies.filter(m=>m.is_published).length,   color:'#22c55e', icon: CheckCircle },
+              { label:'Featured',  val: movies.filter(m=>m.is_featured).length,    color:'#FFB733', icon: Sparkles    },
+              { label:'Trending',  val: movies.filter(m=>m.is_trending).length,    color:'#ef4444', icon: TrendingUp  },
+            ].map(({ label, val, color, icon: Icon }) => (
+              <div key={label} style={{ padding:'1.1rem 1.25rem', background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:14 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'0.6rem', marginBottom:'0.5rem' }}>
+                  <Icon style={{ width:17, height:17, color }} />
+                  <span style={{ fontSize:'0.78rem', color:'var(--text-muted)', fontWeight:600 }}>{label}</span>
+                </div>
+                <p style={{ fontSize:'1.8rem', fontFamily:'Bebas Neue,sans-serif', letterSpacing:'0.04em', color:'var(--text-primary)', lineHeight:1 }}>{val}</p>
               </div>
-              <p style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'white' }}>{totalCount}</p>
-            </div>
-            <div style={{
-              padding: '1.25rem',
-              backgroundColor: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              borderRadius: '12px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <CheckCircle style={{ width: '20px', height: '20px', color: '#22c55e' }} />
-                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Published</span>
-              </div>
-              <p style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'white' }}>
-                {movies.filter(m => m.is_published).length}
-              </p>
-            </div>
-            <div style={{
-              padding: '1.25rem',
-              backgroundColor: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              borderRadius: '12px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <Sparkles style={{ width: '20px', height: '20px', color: '#f59e0b' }} />
-                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Featured</span>
-              </div>
-              <p style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'white' }}>
-                {movies.filter(m => m.is_featured).length}
-              </p>
-            </div>
-            <div style={{
-              padding: '1.25rem',
-              backgroundColor: 'rgba(255,255,255,0.02)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              borderRadius: '12px',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem' }}>
-                <TrendingUp style={{ width: '20px', height: '20px', color: '#ef4444' }} />
-                <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem' }}>Trending</span>
-              </div>
-              <p style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'white' }}>
-                {movies.filter(m => m.is_trending).length}
-              </p>
-            </div>
+            ))}
           </div>
 
-          {/* Search and Filters */}
-          <div style={{
-            backgroundColor: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.05)',
-            borderRadius: '16px',
-            padding: '1.5rem',
-            marginBottom: '1.5rem',
-          }}>
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              {/* Search */}
-              <div style={{ position: 'relative', flex: '1', minWidth: '250px' }}>
-                <Search style={{
-                  position: 'absolute',
-                  left: '12px',
-                  top: '50%',
-                  transform: 'translateY(-50%)',
-                  width: '18px',
-                  height: '18px',
-                  color: 'rgba(255,255,255,0.4)',
-                }} />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value)
-                    setCurrentPage(1)
-                  }}
-                  placeholder="Search movies..."
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem 0.75rem 40px',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    fontSize: '0.9rem',
-                    outline: 'none',
-                  }}
-                />
+          {/* Search + Filters */}
+          <div style={{ background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:16, padding:'1.25rem', marginBottom:'1.5rem' }}>
+            <div style={{ display:'flex', gap:'0.75rem', flexWrap:'wrap', alignItems:'center' }}>
+              <div style={{ position:'relative', flex:1, minWidth:240 }}>
+                <Search style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', width:16, height:16, color:'var(--text-muted)' }} />
+                <input type="text" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1) }} placeholder="Search title, director…"
+                  style={{ width:'100%', padding:'0.7rem 1rem 0.7rem 38px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.09)', borderRadius:10, color:'white', fontSize:'0.88rem', outline:'none', boxSizing:'border-box', fontFamily:'Outfit,sans-serif' }} />
               </div>
-
-              {/* Filter Toggle */}
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  padding: '0.75rem 1rem',
-                  backgroundColor: showFilters ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255,255,255,0.05)',
-                  border: showFilters ? '1px solid rgba(139, 92, 246, 0.3)' : '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
-                  color: showFilters ? '#a78bfa' : 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                <Filter style={{ width: '18px', height: '18px' }} />
-                Filters
+              <button onClick={() => setShowFilters(f => !f)}
+                style={{ display:'flex', alignItems:'center', gap:'0.4rem', padding:'0.7rem 1rem', background: showFilters ? 'rgba(255,98,0,0.15)' : 'rgba(255,255,255,0.04)', border:`1px solid ${showFilters ? 'rgba(255,140,0,0.35)' : 'rgba(255,255,255,0.09)'}`, borderRadius:10, color: showFilters ? '#FFB733' : 'var(--text-secondary)', cursor:'pointer', fontSize:'0.85rem', fontWeight:600, fontFamily:'Outfit,sans-serif' }}>
+                <Filter style={{ width:15, height:15 }} /> Filters
               </button>
-
-              {/* Sort */}
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                style={{
-                  padding: '0.75rem 1rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
-                  color: 'white',
-                  outline: 'none',
-                  cursor: 'pointer',
-                }}
-              >
-                <option value="newest" style={{ background: '#1a1a1d' }}>Newest First</option>
-                <option value="oldest" style={{ background: '#1a1a1d' }}>Oldest First</option>
-                <option value="title" style={{ background: '#1a1a1d' }}>Title A-Z</option>
-                <option value="rating" style={{ background: '#1a1a1d' }}>Highest Rated</option>
-                <option value="views" style={{ background: '#1a1a1d' }}>Most Viewed</option>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value as any)}
+                style={{ padding:'0.7rem 1rem', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.09)', borderRadius:10, color:'white', outline:'none', cursor:'pointer', fontSize:'0.85rem', fontFamily:'Outfit,sans-serif' }}>
+                <option value="newest" style={{ background:'#0e0e18' }}>Newest</option>
+                <option value="oldest" style={{ background:'#0e0e18' }}>Oldest</option>
+                <option value="title"  style={{ background:'#0e0e18' }}>Title A–Z</option>
+                <option value="rating" style={{ background:'#0e0e18' }}>Top Rated</option>
+                <option value="views"  style={{ background:'#0e0e18' }}>Most Viewed</option>
               </select>
             </div>
-
-            {/* Filter Options */}
             {showFilters && (
-              <div style={{
-                display: 'flex',
-                gap: '1rem',
-                marginTop: '1rem',
-                paddingTop: '1rem',
-                borderTop: '1px solid rgba(255,255,255,0.05)',
-                flexWrap: 'wrap',
-              }}>
-                {/* Status Filter */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem' }}>
-                    Status
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {(['all', 'published', 'draft'] as const).map(status => (
-                      <button
-                        key={status}
-                        onClick={() => {
-                          setFilterStatus(status)
-                          setCurrentPage(1)
-                        }}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          borderRadius: '8px',
-                          border: 'none',
-                          backgroundColor: filterStatus === status ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                          color: filterStatus === status ? '#a78bfa' : 'rgba(255,255,255,0.6)',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem',
-                          textTransform: 'capitalize',
-                        }}
-                      >
-                        {status}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Featured Filter */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginBottom: '0.5rem' }}>
-                    Category
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    {(['all', 'featured', 'trending'] as const).map(cat => (
-                      <button
-                        key={cat}
-                        onClick={() => {
-                          setFilterFeatured(cat)
-                          setCurrentPage(1)
-                        }}
-                        style={{
-                          padding: '0.5rem 1rem',
-                          borderRadius: '8px',
-                          border: 'none',
-                          backgroundColor: filterFeatured === cat ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                          color: filterFeatured === cat ? '#a78bfa' : 'rgba(255,255,255,0.6)',
-                          cursor: 'pointer',
-                          fontSize: '0.85rem',
-                          textTransform: 'capitalize',
-                        }}
-                      >
-                        {cat}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              <div style={{ display:'flex', gap:'1.5rem', marginTop:'1rem', paddingTop:'1rem', borderTop:'1px solid rgba(255,255,255,0.05)', flexWrap:'wrap' }}>
+                <FilterGroup label="Status"   options={['all','published','draft']}    active={filterStatus}   onChange={v => { setFilterStatus(v as any);   setCurrentPage(1) }} />
+                <FilterGroup label="Category" options={['all','featured','trending']}  active={filterFeatured} onChange={v => { setFilterFeatured(v as any); setCurrentPage(1) }} />
               </div>
             )}
           </div>
 
-          {/* Bulk Actions */}
+          {/* Bulk actions */}
           {selectedMovies.length > 0 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '1rem',
-              padding: '1rem 1.5rem',
-              backgroundColor: 'rgba(139, 92, 246, 0.1)',
-              border: '1px solid rgba(139, 92, 246, 0.3)',
-              borderRadius: '12px',
-              marginBottom: '1.5rem',
-            }}>
-              <span style={{ color: '#a78bfa', fontWeight: 500 }}>
-                {selectedMovies.length} selected
-              </span>
-              <button
-                onClick={() => handleBulkPublish(true)}
-                disabled={actionLoading === 'bulk'}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'rgba(34, 197, 94, 0.2)',
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
-                  borderRadius: '8px',
-                  color: '#22c55e',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
-              >
-                Publish All
-              </button>
-              <button
-                onClick={() => handleBulkPublish(false)}
-                disabled={actionLoading === 'bulk'}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'rgba(245, 158, 11, 0.2)',
-                  border: '1px solid rgba(245, 158, 11, 0.3)',
-                  borderRadius: '8px',
-                  color: '#f59e0b',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
-              >
-                Unpublish All
-              </button>
-              <button
-                onClick={handleBulkDelete}
-                disabled={actionLoading === 'bulk'}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '8px',
-                  color: '#ef4444',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                }}
-              >
-                Delete All
-              </button>
-              <button
-                onClick={() => setSelectedMovies([])}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  color: 'rgba(255,255,255,0.6)',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  marginLeft: 'auto',
-                }}
-              >
-                Clear Selection
-              </button>
+            <div style={{ display:'flex', alignItems:'center', gap:'0.75rem', padding:'0.85rem 1.25rem', background:'rgba(255,98,0,0.07)', border:'1px solid rgba(255,140,0,0.2)', borderRadius:12, marginBottom:'1.25rem', flexWrap:'wrap' }}>
+              <span style={{ color:'#FFB733', fontWeight:700, fontSize:'0.88rem' }}>{selectedMovies.length} selected</span>
+              {[
+                { label:'Publish',   fn: () => bulkPublish(true),  color:'#22c55e', bg:'rgba(34,197,94,0.12)'  },
+                { label:'Unpublish', fn: () => bulkPublish(false), color:'#f59e0b', bg:'rgba(245,158,11,0.12)' },
+                { label:'Delete',    fn: bulkDelete,               color:'#f87171', bg:'rgba(239,68,68,0.12)'  },
+              ].map(({ label, fn, color, bg }) => (
+                <button key={label} onClick={fn} disabled={actionLoading === 'bulk'}
+                  style={{ padding:'0.4rem 0.9rem', background:bg, border:`1px solid ${color}33`, borderRadius:8, color, cursor:'pointer', fontSize:'0.82rem', fontWeight:600, fontFamily:'Outfit,sans-serif' }}>
+                  {label}
+                </button>
+              ))}
+              <button onClick={() => setSelectedMovies([])} style={{ marginLeft:'auto', background:'none', border:'none', color:'var(--text-muted)', cursor:'pointer', fontSize:'0.82rem', fontFamily:'Outfit,sans-serif' }}>Clear</button>
             </div>
           )}
 
-          {/* Movies Table */}
-          <div style={{
-            backgroundColor: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.05)',
-            borderRadius: '16px',
-            overflow: 'hidden',
-          }}>
-            {/* Table Header */}
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: '40px 80px 1fr 100px 80px 100px 120px 100px',
-              gap: '1rem',
-              padding: '1rem 1.5rem',
-              backgroundColor: 'rgba(255,255,255,0.02)',
-              borderBottom: '1px solid rgba(255,255,255,0.05)',
-              alignItems: 'center',
-            }}>
-              <div>
-                <input
-                  type="checkbox"
-                  checked={selectedMovies.length === movies.length && movies.length > 0}
-                  onChange={handleSelectAll}
-                  style={{ cursor: 'pointer', width: '18px', height: '18px', accentColor: '#8b5cf6' }}
-                />
-              </div>
-              <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>POSTER</div>
-              <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>TITLE</div>
-              <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>RATING</div>
-              <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>VIEWS</div>
-              <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>STATUS</div>
-              <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>BADGES</div>
-              <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', fontWeight: 600 }}>ACTIONS</div>
+          {/* Table */}
+          <div style={{ background:'rgba(255,255,255,0.015)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:16, overflow:'hidden' }}>
+
+            {/* Head */}
+            <div style={{ display:'grid', gridTemplateColumns:'36px 70px 1fr 90px 70px 100px 110px 110px', gap:'0.75rem', padding:'0.85rem 1.25rem', background:'rgba(255,255,255,0.02)', borderBottom:'1px solid rgba(255,255,255,0.05)', alignItems:'center' }}>
+              <input type="checkbox" checked={selectedMovies.length === movies.length && movies.length > 0}
+                onChange={() => setSelectedMovies(selectedMovies.length === movies.length ? [] : movies.map(m => m.id))}
+                style={{ cursor:'pointer', accentColor:'#FF6200', width:16, height:16 }} />
+              {['POSTER','TITLE','RATING','VIEWS','STATUS','BADGES','ACTIONS'].map(h => (
+                <div key={h} style={{ fontSize:'0.7rem', color:'var(--text-muted)', fontWeight:800, letterSpacing:'0.1em' }}>{h}</div>
+              ))}
             </div>
 
-            {/* Loading State */}
             {loading && (
-              <div style={{ padding: '3rem', textAlign: 'center' }}>
-                <Loader2 style={{
-                  width: '40px',
-                  height: '40px',
-                  color: '#8b5cf6',
-                  animation: 'spin 1s linear infinite',
-                  margin: '0 auto 1rem',
-                }} />
-                <p style={{ color: 'rgba(255,255,255,0.5)' }}>Loading movies...</p>
+              <div style={{ padding:'3rem', textAlign:'center' }}>
+                <Loader2 style={{ width:36, height:36, color:'#FF6200', animation:'spin 1s linear infinite', margin:'0 auto 0.75rem' }} />
+                <p style={{ color:'var(--text-muted)', fontSize:'0.88rem' }}>Loading movies…</p>
               </div>
             )}
 
-            {/* Empty State */}
             {!loading && movies.length === 0 && (
-              <div style={{ padding: '3rem', textAlign: 'center' }}>
-                <Film style={{ width: '48px', height: '48px', color: 'rgba(255,255,255,0.2)', margin: '0 auto 1rem' }} />
-                <p style={{ color: 'rgba(255,255,255,0.5)', marginBottom: '1rem' }}>No movies found</p>
-                <Link href="/admin/upload">
-                  <button style={{
-                    padding: '0.75rem 1.5rem',
-                    background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)',
-                    border: 'none',
-                    borderRadius: '10px',
-                    color: 'white',
-                    cursor: 'pointer',
-                  }}>
-                    Upload First Movie
-                  </button>
-                </Link>
+              <div style={{ padding:'3rem', textAlign:'center' }}>
+                <Film style={{ width:44, height:44, color:'rgba(255,255,255,0.1)', margin:'0 auto 0.75rem' }} />
+                <p style={{ color:'var(--text-muted)', marginBottom:'1rem' }}>No movies found</p>
+                <Link href="/admin/upload"><button className="btn-fire">Upload First Movie</button></Link>
               </div>
             )}
 
-            {/* Table Rows */}
-            {!loading && movies.map((movie) => (
-              <div
-                key={movie.id}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '40px 80px 1fr 100px 80px 100px 120px 100px',
-                  gap: '1rem',
-                  padding: '1rem 1.5rem',
-                  borderBottom: '1px solid rgba(255,255,255,0.03)',
-                  alignItems: 'center',
-                  backgroundColor: selectedMovies.includes(movie.id) ? 'rgba(139, 92, 246, 0.05)' : 'transparent',
-                  transition: 'background 0.2s',
-                }}
+            {!loading && movies.map((movie, idx) => (
+              <div key={movie.id}
+                style={{ display:'grid', gridTemplateColumns:'36px 70px 1fr 90px 70px 100px 110px 110px', gap:'0.75rem', padding:'0.9rem 1.25rem', borderBottom: idx < movies.length - 1 ? '1px solid rgba(255,255,255,0.03)' : 'none', alignItems:'center', background: selectedMovies.includes(movie.id) ? 'rgba(255,98,0,0.05)' : 'transparent', transition:'background 0.15s' }}
+                onMouseOver={e => { if (!selectedMovies.includes(movie.id)) e.currentTarget.style.background='rgba(255,255,255,0.02)' }}
+                onMouseOut={e => { if (!selectedMovies.includes(movie.id)) e.currentTarget.style.background='transparent' }}
               >
-                {/* Checkbox */}
-                <div>
-                  <input
-                    type="checkbox"
-                    checked={selectedMovies.includes(movie.id)}
-                    onChange={() => handleSelectMovie(movie.id)}
-                    style={{ cursor: 'pointer', width: '18px', height: '18px', accentColor: '#8b5cf6' }}
-                  />
+                <input type="checkbox" checked={selectedMovies.includes(movie.id)}
+                  onChange={() => setSelectedMovies(p => p.includes(movie.id) ? p.filter(i=>i!==movie.id) : [...p, movie.id])}
+                  style={{ cursor:'pointer', accentColor:'#FF6200', width:16, height:16 }} />
+
+                <div style={{ width:52, height:70, borderRadius:8, overflow:'hidden', background:'rgba(255,255,255,0.05)', flexShrink:0 }}>
+                  {movie.poster_url
+                    ? <Image src={movie.poster_url} alt={movie.title} width={52} height={70} style={{ width:'100%', height:'100%', objectFit:'cover' }} unoptimized />
+                    : <div style={{ width:'100%', height:'100%', display:'flex', alignItems:'center', justifyContent:'center' }}><Film style={{ width:18, height:18, color:'rgba(255,255,255,0.15)' }} /></div>
+                  }
                 </div>
 
-                {/* Poster */}
-                <div style={{
-                  width: '60px',
-                  height: '80px',
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                }}>
-                  {movie.poster_url ? (
-                    <Image
-                      src={movie.poster_url}
-                      alt={movie.title}
-                      width={60}
-                      height={80}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      unoptimized
-                    />
-                  ) : (
-                    <div style={{
-                      width: '100%',
-                      height: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}>
-                      <Film style={{ width: '20px', height: '20px', color: 'rgba(255,255,255,0.2)' }} />
-                    </div>
-                  )}
-                </div>
-
-                {/* Title & Info */}
-                <div>
-                  <Link href={`/watch/${movie.slug}`} style={{ textDecoration: 'none' }}>
-                    <h4 style={{ fontWeight: 600, color: 'white', marginBottom: '0.25rem', cursor: 'pointer' }}>
-                      {movie.title}
-                    </h4>
-                  </Link>
-                  <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
-                    <span>{movie.release_year}</span>
-                    <span>{movie.duration_minutes}m</span>
-                    <span>{movie.language}</span>
+                <div style={{ minWidth:0 }}>
+                  <p style={{ fontWeight:700, fontSize:'0.9rem', color:'white', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', marginBottom:'0.2rem' }}>{movie.title}</p>
+                  <div style={{ display:'flex', gap:'0.5rem', fontSize:'0.72rem', color:'var(--text-muted)', flexWrap:'wrap' }}>
+                    {movie.release_year    && <span>{movie.release_year}</span>}
+                    {movie.duration_minutes && <span>{movie.duration_minutes}m</span>}
+                    {movie.language         && <span>{movie.language}</span>}
                   </div>
                 </div>
 
-                {/* Rating */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Star style={{ width: '14px', height: '14px', color: '#fbbf24', fill: '#fbbf24' }} />
-                  <span style={{ color: '#fbbf24', fontWeight: 600 }}>{movie.rating}</span>
+                <div style={{ display:'flex', alignItems:'center', gap:'0.3rem' }}>
+                  <Star style={{ width:13, height:13, color:'#FFB733', fill:'#FFB733' }} />
+                  <span style={{ color:'#FFB733', fontWeight:700, fontSize:'0.88rem' }}>{movie.admin_rating || movie.rating || '—'}</span>
                 </div>
 
-                {/* Views */}
-                <div style={{ color: 'rgba(255,255,255,0.7)' }}>
-                  {movie.view_count >= 1000 ? `${(movie.view_count / 1000).toFixed(1)}K` : movie.view_count}
+                <span style={{ color:'var(--text-secondary)', fontSize:'0.85rem' }}>
+                  {movie.view_count >= 1000 ? `${(movie.view_count/1000).toFixed(1)}K` : movie.view_count || 0}
+                </span>
+
+                <button onClick={() => toggle(movie, 'is_published')}
+                  style={{ padding:'0.3rem 0.7rem', borderRadius:9999, border:'none', fontSize:'0.72rem', fontWeight:700, cursor:'pointer', fontFamily:'Outfit,sans-serif', background: movie.is_published ? 'rgba(34,197,94,0.14)' : 'rgba(245,158,11,0.14)', color: movie.is_published ? '#22c55e' : '#f59e0b' }}>
+                  {movie.is_published ? 'Published' : 'Draft'}
+                </button>
+
+                <div style={{ display:'flex', gap:'0.3rem' }}>
+                  <IconToggle active={movie.is_featured} onClick={() => toggle(movie,'is_featured')} title="Featured" activeColor="rgba(255,183,51,0.3)"  icon={<Sparkles   style={{ width:14, height:14 }} />} />
+                  <IconToggle active={movie.is_trending} onClick={() => toggle(movie,'is_trending')} title="Trending" activeColor="rgba(239,68,68,0.3)"   icon={<TrendingUp style={{ width:14, height:14 }} />} />
                 </div>
 
-                {/* Status */}
-                <div>
-                  <button
-                    onClick={() => handleTogglePublish(movie)}
-                    disabled={actionLoading === movie.id}
-                    style={{
-                      padding: '0.35rem 0.75rem',
-                      borderRadius: '20px',
-                      border: 'none',
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                      cursor: 'pointer',
-                      backgroundColor: movie.is_published ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.15)',
-                      color: movie.is_published ? '#22c55e' : '#f59e0b',
-                    }}
-                  >
-                    {movie.is_published ? 'Published' : 'Draft'}
-                  </button>
-                </div>
-
-                {/* Badges */}
-                <div style={{ display: 'flex', gap: '0.25rem' }}>
-                  <button
-                    onClick={() => handleToggleFeatured(movie)}
-                    disabled={actionLoading === movie.id}
-                    title="Toggle Featured"
-                    style={{
-                      padding: '0.35rem',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      backgroundColor: movie.is_featured ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                      color: movie.is_featured ? '#a78bfa' : 'rgba(255,255,255,0.3)',
-                    }}
-                  >
-                    <Sparkles style={{ width: '16px', height: '16px' }} />
-                  </button>
-                  <button
-                    onClick={() => handleToggleTrending(movie)}
-                    disabled={actionLoading === movie.id}
-                    title="Toggle Trending"
-                    style={{
-                      padding: '0.35rem',
-                      borderRadius: '6px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      backgroundColor: movie.is_trending ? 'rgba(239, 68, 68, 0.3)' : 'rgba(255,255,255,0.05)',
-                      color: movie.is_trending ? '#f87171' : 'rgba(255,255,255,0.3)',
-                    }}
-                  >
-                    <TrendingUp style={{ width: '16px', height: '16px' }} />
-                  </button>
-                </div>
-
-                {/* Actions */}
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display:'flex', gap:'0.35rem' }}>
                   <Link href={`/watch/${movie.slug}`}>
-                    <button
-                      title="View"
-                      style={{
-                        padding: '0.5rem',
-                        backgroundColor: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: '8px',
-                        color: 'white',
-                        cursor: 'pointer',
-                      }}
-                    >
-                      <Eye style={{ width: '16px', height: '16px' }} />
-                    </button>
+                    <button title="View" style={actionBtn}><Eye style={{ width:14, height:14 }} /></button>
                   </Link>
-                  <button
-                    onClick={() => {
-                      setMovieToDelete(movie)
-                      setShowDeleteModal(true)
-                    }}
-                    title="Delete"
-                    style={{
-                      padding: '0.5rem',
-                      backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.2)',
-                      borderRadius: '8px',
-                      color: '#f87171',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Trash2 style={{ width: '16px', height: '16px' }} />
+                  <button title="Edit" onClick={() => openEdit(movie)}
+                    style={{ ...actionBtn, background:'rgba(255,98,0,0.12)', borderColor:'rgba(255,140,0,0.25)', color:'#FFB733' }}>
+                    <Edit style={{ width:14, height:14 }} />
+                  </button>
+                  <button title="Delete" onClick={() => { setMovieToDelete(movie); setDeleteModal(true) }}
+                    style={{ ...actionBtn, background:'rgba(239,68,68,0.1)', borderColor:'rgba(239,68,68,0.2)', color:'#f87171' }}>
+                    <Trash2 style={{ width:14, height:14 }} />
                   </button>
                 </div>
               </div>
@@ -1008,179 +527,218 @@ export default function AdminMoviesPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.5rem',
-              marginTop: '2rem',
-            }}>
-              <button
-                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                disabled={currentPage === 1}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
-                  color: currentPage === 1 ? 'rgba(255,255,255,0.3)' : 'white',
-                  cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                }}
-              >
-                <ChevronLeft style={{ width: '16px', height: '16px' }} />
-                Previous
-              </button>
-
-              <div style={{ display: 'flex', gap: '0.25rem' }}>
-                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  let pageNum
-                  if (totalPages <= 5) {
-                    pageNum = i + 1
-                  } else if (currentPage <= 3) {
-                    pageNum = i + 1
-                  } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i
-                  } else {
-                    pageNum = currentPage - 2 + i
-                  }
-
-                  return (
-                    <button
-                      key={pageNum}
-                      onClick={() => setCurrentPage(pageNum)}
-                      style={{
-                        width: '36px',
-                        height: '36px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        backgroundColor: currentPage === pageNum ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                        color: currentPage === pageNum ? '#a78bfa' : 'white',
-                        cursor: 'pointer',
-                        fontWeight: currentPage === pageNum ? 600 : 400,
-                      }}
-                    >
-                      {pageNum}
-                    </button>
-                  )
-                })}
-              </div>
-
-              <button
-                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                disabled={currentPage === totalPages}
-                style={{
-                  padding: '0.5rem 1rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '8px',
-                  color: currentPage === totalPages ? 'rgba(255,255,255,0.3)' : 'white',
-                  cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem',
-                }}
-              >
-                Next
-                <ChevronRight style={{ width: '16px', height: '16px' }} />
-              </button>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem', marginTop:'1.75rem' }}>
+              <button onClick={() => setCurrentPage(p=>Math.max(1,p-1))} disabled={currentPage===1} style={{ ...pagBtn, opacity: currentPage===1 ? 0.4 : 1 }}><ChevronLeft style={{ width:16, height:16 }} /></button>
+              {Array.from({ length: Math.min(5, totalPages) }, (_,i) => {
+                const n = totalPages<=5 ? i+1 : currentPage<=3 ? i+1 : currentPage>=totalPages-2 ? totalPages-4+i : currentPage-2+i
+                return <button key={n} onClick={() => setCurrentPage(n)} style={{ ...pagBtn, background: currentPage===n?'rgba(255,98,0,0.22)':'rgba(255,255,255,0.04)', color: currentPage===n?'#FFB733':'white', fontWeight: currentPage===n?700:400, border: currentPage===n?'1px solid rgba(255,140,0,0.35)':'1px solid rgba(255,255,255,0.08)' }}>{n}</button>
+              })}
+              <button onClick={() => setCurrentPage(p=>Math.min(totalPages,p+1))} disabled={currentPage===totalPages} style={{ ...pagBtn, opacity: currentPage===totalPages ? 0.4 : 1 }}><ChevronRight style={{ width:16, height:16 }} /></button>
             </div>
           )}
         </div>
       </main>
 
-      {/* Delete Confirmation Modal */}
-      {showDeleteModal && movieToDelete && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 100,
-          padding: '2rem',
-        }}>
-          <div style={{
-            backgroundColor: '#1a1a1d',
-            borderRadius: '20px',
-            padding: '2rem',
-            maxWidth: '400px',
-            width: '100%',
-            border: '1px solid rgba(255,255,255,0.1)',
-          }}>
-            <div style={{
-              width: '60px',
-              height: '60px',
-              borderRadius: '50%',
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.5rem',
-            }}>
-              <AlertTriangle style={{ width: '30px', height: '30px', color: '#ef4444' }} />
+      {/* ══ EDIT MODAL ══ */}
+      {editModal && ef && editingMovie && (
+        <div onClick={e => { if (e.target === e.currentTarget) setEditModal(false) }}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', backdropFilter:'blur(8px)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem', animation:'fadeIn 0.18s ease' }}>
+          <div style={{ width:'100%', maxWidth:680, maxHeight:'90vh', display:'flex', flexDirection:'column', background:'rgba(12,12,20,0.99)', border:'1px solid rgba(255,140,0,0.2)', borderRadius:22, overflow:'hidden', boxShadow:'0 32px 80px rgba(0,0,0,0.75)', animation:'slideUp 0.25s cubic-bezier(0.34,1.56,0.64,1)' }}>
+
+            <div style={{ padding:'1.1rem 1.4rem', borderBottom:'1px solid rgba(255,140,0,0.12)', display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(255,98,0,0.05)', flexShrink:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:'0.65rem' }}>
+                <Edit style={{ width:17, height:17, color:'#FF8C00' }} />
+                <div>
+                  <p style={{ fontFamily:'Bebas Neue,sans-serif', fontSize:'1.2rem', letterSpacing:'0.06em', lineHeight:1 }}>Edit Movie</p>
+                  <p style={{ fontSize:'0.7rem', color:'var(--text-muted)', marginTop:1 }}>{editingMovie.title}</p>
+                </div>
+              </div>
+              <button onClick={() => setEditModal(false)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-muted)', display:'flex', padding:4, borderRadius:8 }}><X style={{ width:17, height:17 }} /></button>
             </div>
-            <h3 style={{ textAlign: 'center', marginBottom: '0.5rem', color: 'white' }}>Delete Movie?</h3>
-            <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.5)', marginBottom: '1.5rem' }}>
-              Are you sure you want to delete "{movieToDelete.title}"? This action cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button
-                onClick={() => {
-                  setShowDeleteModal(false)
-                  setMovieToDelete(null)
-                }}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
-                  color: 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteMovie}
-                disabled={actionLoading === movieToDelete.id}
-                style={{
-                  flex: 1,
-                  padding: '0.75rem',
-                  backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  borderRadius: '10px',
-                  color: '#f87171',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem',
-                }}
-              >
-                {actionLoading === movieToDelete.id ? (
-                  <Loader2 style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
-                ) : (
-                  <>
-                    <Trash2 style={{ width: '18px', height: '18px' }} />
-                    Delete
-                  </>
-                )}
+
+            {/* Tab bar */}
+            <div style={{ display:'flex', padding:'0.6rem 1.4rem 0', gap:'0.25rem', borderBottom:'1px solid rgba(255,255,255,0.06)', flexShrink:0 }}>
+              {([
+                { id:'basic', label:'Basic Info',   icon: Film     },
+                { id:'media', label:'Media & URLs',  icon: Video    },
+                { id:'meta',  label:'Cast & Genre',  icon: Users    },
+                { id:'flags', label:'Settings',     icon: Settings },
+              ] as { id: typeof editTab; label:string; icon:any }[]).map(({ id, label, icon: Icon }) => (
+                <button key={id} onClick={() => setEditTab(id)}
+                  style={{ display:'flex', alignItems:'center', gap:'0.35rem', padding:'0.55rem 0.85rem', borderRadius:'8px 8px 0 0', border:'none', background: editTab===id ? 'rgba(255,98,0,0.12)' : 'transparent', borderBottom: editTab===id ? '2px solid #FF8C00' : '2px solid transparent', color: editTab===id ? '#FFB733' : 'var(--text-muted)', cursor:'pointer', fontSize:'0.8rem', fontWeight:700, fontFamily:'Outfit,sans-serif', transition:'all 0.15s' }}>
+                  <Icon style={{ width:13, height:13 }} />{label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ flex:1, overflowY:'auto', padding:'1.4rem' }}>
+
+              {editTab === 'basic' && (
+                <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+                  <Row label="Title *"><EInput value={ef.title} onChange={v => setEf({ title:v })} placeholder="Movie title" /></Row>
+                  <Row label="Slug"><EInput value={ef.slug} onChange={v => setEf({ slug:v })} placeholder="url-friendly-slug" /></Row>
+                  <Row label="Description"><textarea value={ef.description} onChange={e => setEf({ description:e.target.value })} placeholder="Movie synopsis…" rows={4} style={{ ...inputStyle, resize:'vertical', minHeight:90 }} /></Row>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'0.75rem' }}>
+                    <Row label="Year"><EInput value={ef.release_year} onChange={v => setEf({ release_year:v })} placeholder="2024" type="number" /></Row>
+                    <Row label="Duration (min)"><EInput value={ef.duration_minutes} onChange={v => setEf({ duration_minutes:v })} placeholder="120" type="number" /></Row>
+                    <Row label="Admin Rating"><EInput value={ef.admin_rating} onChange={v => setEf({ admin_rating:v })} placeholder="8.5" type="number" /></Row>
+                  </div>
+                  <Row label="Language">
+                    <select value={ef.language} onChange={e => setEf({ language:e.target.value })} style={inputStyle}>
+                      <option value="" style={{ background:'#0e0e18' }}>Select language</option>
+                      {LANGUAGES.map(l => <option key={l} value={l} style={{ background:'#0e0e18' }}>{l}</option>)}
+                    </select>
+                  </Row>
+                </div>
+              )}
+
+              {editTab === 'media' && (
+                <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+                  <Row label="YouTube Video ID"><EInput value={ef.youtube_id}  onChange={v => setEf({ youtube_id:v })}  placeholder="dQw4w9WgXcQ" /></Row>
+                  <Row label="YouTube URL"><EInput value={ef.youtube_url} onChange={v => setEf({ youtube_url:v })} placeholder="https://youtube.com/watch?v=…" /></Row>
+                  <Row label="Poster URL">
+                    <EInput value={ef.poster_url} onChange={v => setEf({ poster_url:v })} placeholder="https://…/poster.jpg" />
+                    {ef.poster_url && <div style={{ marginTop:'0.5rem', width:70, height:95, borderRadius:8, overflow:'hidden', border:'1px solid rgba(255,140,0,0.2)' }}><Image src={ef.poster_url} alt="poster" width={70} height={95} style={{ objectFit:'cover', width:'100%', height:'100%' }} unoptimized /></div>}
+                  </Row>
+                  <Row label="Backdrop URL">
+                    <EInput value={ef.backdrop_url} onChange={v => setEf({ backdrop_url:v })} placeholder="https://…/backdrop.jpg" />
+                    {ef.backdrop_url && <div style={{ marginTop:'0.5rem', width:'100%', height:90, borderRadius:8, overflow:'hidden', border:'1px solid rgba(255,140,0,0.2)' }}><Image src={ef.backdrop_url} alt="backdrop" width={600} height={90} style={{ objectFit:'cover', width:'100%', height:'100%' }} unoptimized /></div>}
+                  </Row>
+                  <Row label="Trailer URL"><EInput value={ef.trailer_url} onChange={v => setEf({ trailer_url:v })} placeholder="https://…/trailer" /></Row>
+                </div>
+              )}
+
+              {editTab === 'meta' && (
+                <div style={{ display:'flex', flexDirection:'column', gap:'1rem' }}>
+                  <Row label="Director"><EInput value={ef.director} onChange={v => setEf({ director:v })} placeholder="Director name" /></Row>
+                  <Row label="Actors (comma separated)"><EInput value={ef.actors} onChange={v => setEf({ actors:v })} placeholder="Actor 1, Actor 2, Actor 3" /></Row>
+                  <Row label="Genres (comma separated)">
+                    <EInput value={ef.genre} onChange={v => setEf({ genre:v })} placeholder="Action, Thriller, Drama" />
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:'0.35rem', marginTop:'0.5rem' }}>
+                      {GENRES.map(g => {
+                        const active = ef.genre.split(',').map(s=>s.trim()).includes(g)
+                        return (
+                          <button key={g} type="button" onClick={() => {
+                            const curr = ef.genre.split(',').map(s=>s.trim()).filter(Boolean)
+                            const next = active ? curr.filter(x=>x!==g) : [...curr, g]
+                            setEf({ genre: next.join(', ') })
+                          }}
+                            style={{ padding:'0.22rem 0.65rem', borderRadius:9999, border:`1px solid ${active?'rgba(255,140,0,0.4)':'rgba(255,255,255,0.09)'}`, background: active?'rgba(255,98,0,0.15)':'transparent', color: active?'#FFB733':'var(--text-muted)', fontSize:'0.72rem', fontWeight:600, cursor:'pointer', fontFamily:'Outfit,sans-serif', transition:'all 0.15s' }}>
+                            {g}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </Row>
+                </div>
+              )}
+
+              {editTab === 'flags' && (
+                <div style={{ display:'flex', flexDirection:'column', gap:'0.75rem' }}>
+                  {([
+                    { key:'is_published', label:'Published', desc:'Visible to all users on the platform',     color:'#22c55e' },
+                    { key:'is_featured',  label:'Featured',  desc:'Shown in the Featured Collection section', color:'#FFB733' },
+                    { key:'is_trending',  label:'Trending',  desc:'Shown in the Trending Now section',        color:'#ef4444' },
+                  ] as { key: keyof EditForm; label:string; desc:string; color:string }[]).map(({ key, label, desc, color }) => (
+                    <div key={key} onClick={() => setEf({ [key]: !ef[key] } as any)}
+                      style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'1rem 1.25rem', borderRadius:14, border:`1px solid ${(ef[key] as boolean)?color+'44':'rgba(255,255,255,0.07)'}`, background:(ef[key] as boolean)?color+'11':'rgba(255,255,255,0.02)', cursor:'pointer', transition:'all 0.18s' }}>
+                      <div>
+                        <p style={{ fontWeight:700, fontSize:'0.9rem', color:(ef[key] as boolean)?color:'var(--text-primary)', marginBottom:'0.2rem' }}>{label}</p>
+                        <p style={{ fontSize:'0.78rem', color:'var(--text-muted)' }}>{desc}</p>
+                      </div>
+                      <div style={{ width:44, height:24, borderRadius:12, background:(ef[key] as boolean)?color:'rgba(255,255,255,0.1)', position:'relative', transition:'background 0.25s', flexShrink:0 }}>
+                        <div style={{ position:'absolute', top:3, left:(ef[key] as boolean)?23:3, width:18, height:18, borderRadius:'50%', background:'white', transition:'left 0.25s', boxShadow:'0 1px 4px rgba(0,0,0,0.3)' }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding:'0.9rem 1.4rem', borderTop:'1px solid rgba(255,140,0,0.1)', display:'flex', gap:'0.65rem', justifyContent:'flex-end', background:'rgba(255,255,255,0.01)', flexShrink:0 }}>
+              <button onClick={() => setEditModal(false)} className="btn-ghost" style={{ padding:'0.65rem 1.25rem', fontSize:'0.86rem' }}>Cancel</button>
+              <button onClick={saveEdit} disabled={editLoading || !ef.title.trim()} className="btn-fire"
+                style={{ padding:'0.65rem 1.5rem', fontSize:'0.86rem', display:'flex', alignItems:'center', gap:'0.4rem', opacity: editLoading || !ef.title.trim() ? 0.6 : 1 }}>
+                {editSuccess ? <><Check style={{ width:15, height:15 }} /> Saved!</>
+                  : editLoading ? <><Loader2 style={{ width:15, height:15, animation:'spin 1s linear infinite' }} /> Saving…</>
+                  : <><Save style={{ width:15, height:15 }} /> Save Changes</>}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ══ DELETE MODAL ══ */}
+      {deleteModal && movieToDelete && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', backdropFilter:'blur(8px)', zIndex:9999, display:'flex', alignItems:'center', justifyContent:'center', padding:'1rem' }}>
+          <div style={{ width:'100%', maxWidth:400, background:'rgba(14,14,24,0.99)', border:'1px solid rgba(239,68,68,0.25)', borderRadius:20, padding:'2rem', textAlign:'center', boxShadow:'0 32px 64px rgba(0,0,0,0.7)' }}>
+            <div style={{ width:60, height:60, borderRadius:'50%', background:'rgba(239,68,68,0.1)', border:'2px solid rgba(239,68,68,0.25)', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 1.25rem' }}>
+              <AlertTriangle style={{ width:28, height:28, color:'#ef4444' }} />
+            </div>
+            <h3 style={{ fontFamily:'Bebas Neue,sans-serif', fontSize:'1.5rem', letterSpacing:'0.05em', marginBottom:'0.5rem' }}>Delete Movie?</h3>
+            <p style={{ color:'var(--text-muted)', fontSize:'0.88rem', marginBottom:'1.5rem', lineHeight:1.55 }}>
+              "<strong style={{ color:'white' }}>{movieToDelete.title}</strong>" will be permanently removed. This cannot be undone.
+            </p>
+            <div style={{ display:'flex', gap:'0.75rem' }}>
+              <button onClick={() => { setDeleteModal(false); setMovieToDelete(null) }} className="btn-ghost" style={{ flex:1, padding:'0.75rem' }}>Cancel</button>
+              <button onClick={doDelete} disabled={actionLoading === movieToDelete.id}
+                style={{ flex:1, padding:'0.75rem', background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:12, color:'#f87171', cursor:'pointer', fontWeight:700, fontSize:'0.9rem', display:'flex', alignItems:'center', justifyContent:'center', gap:'0.4rem', fontFamily:'Outfit,sans-serif' }}>
+                {actionLoading === movieToDelete.id ? <Loader2 style={{ width:17, height:17, animation:'spin 1s linear infinite' }} /> : <><Trash2 style={{ width:16, height:16 }} /> Delete</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div style={{ position:'fixed', bottom:24, right:24, zIndex:999, padding:'0.85rem 1.25rem', borderRadius:14, background: toast.type==='ok' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', border:`1px solid ${toast.type==='ok' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`, color: toast.type==='ok' ? '#4ADE80' : '#f87171', fontSize:'0.88rem', fontWeight:600, backdropFilter:'blur(16px)', display:'flex', alignItems:'center', gap:'0.5rem', boxShadow:'0 8px 30px rgba(0,0,0,0.4)' }}>
+          {toast.type==='ok' ? <CheckCircle style={{ width:16, height:16 }} /> : <X style={{ width:16, height:16 }} />}
+          {toast.msg}
+        </div>
+      )}
+
       <style jsx global>{`
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
+        @keyframes spin      { to { transform: rotate(360deg); } }
+        @keyframes livePulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
+        @keyframes fadeIn    { from { opacity:0 } to { opacity:1 } }
+        @keyframes slideUp   { from { opacity:0; transform:translateY(18px) scale(0.96); } to { opacity:1; transform:translateY(0) scale(1); } }
       `}</style>
     </div>
   )
 }
+
+/* ── Sub-components ── */
+function FilterGroup({ label, options, active, onChange }: { label:string; options:string[]; active:string; onChange:(v:string)=>void }) {
+  return (
+    <div>
+      <p style={{ fontSize:'0.72rem', color:'var(--text-muted)', fontWeight:700, letterSpacing:'0.1em', textTransform:'uppercase', marginBottom:'0.5rem' }}>{label}</p>
+      <div style={{ display:'flex', gap:'0.4rem' }}>
+        {options.map(o => (
+          <button key={o} onClick={() => onChange(o)} style={{ padding:'0.4rem 0.85rem', borderRadius:8, border:'none', background: active===o?'rgba(255,98,0,0.2)':'rgba(255,255,255,0.05)', color: active===o?'#FFB733':'var(--text-muted)', cursor:'pointer', fontSize:'0.8rem', fontWeight:600, textTransform:'capitalize', fontFamily:'Outfit,sans-serif', transition:'all 0.15s' }}>{o}</button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function IconToggle({ active, onClick, title, activeColor, icon }: { active:boolean; onClick:()=>void; title:string; activeColor:string; icon:React.ReactNode }) {
+  return <button onClick={onClick} title={title} style={{ padding:'0.3rem', borderRadius:7, border:'none', cursor:'pointer', background: active?activeColor:'rgba(255,255,255,0.05)', color: active?'white':'rgba(255,255,255,0.25)', transition:'all 0.15s' }}>{icon}</button>
+}
+
+function Row({ label, children }: { label:string; children:React.ReactNode }) {
+  return (
+    <div>
+      <label style={{ display:'block', fontSize:'0.74rem', fontWeight:700, color:'var(--text-muted)', letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:'0.4rem' }}>{label}</label>
+      {children}
+    </div>
+  )
+}
+
+function EInput({ value, onChange, placeholder, type='text' }: { value:string; onChange:(v:string)=>void; placeholder?:string; type?:string }) {
+  return <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} style={inputStyle} onFocus={e => e.target.style.borderColor='rgba(255,140,0,0.45)'} onBlur={e => e.target.style.borderColor='rgba(255,255,255,0.1)'} />
+}
+
+const inputStyle: React.CSSProperties = { width:'100%', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:10, padding:'0.7rem 0.9rem', color:'white', fontSize:'0.87rem', outline:'none', fontFamily:'Outfit,sans-serif', transition:'border-color 0.2s', boxSizing:'border-box' }
+const actionBtn:  React.CSSProperties = { padding:'0.4rem', background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'rgba(255,255,255,0.6)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.15s' }
+const pagBtn:     React.CSSProperties = { width:36, height:36, borderRadius:8, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.04)', color:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Outfit,sans-serif', fontSize:'0.85rem' }

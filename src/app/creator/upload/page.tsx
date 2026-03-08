@@ -1,629 +1,439 @@
+// src/app/(main)/creator/upload/page.tsx
+// Full film upload form with thumbnail, poster, actor images + approval flow
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
-import { useRouter, usePathname } from 'next/navigation'
-import {
-  ArrowLeft, Youtube, Upload, Sparkles, Loader2, Check, X,
-  Film, User, Clock, Star, Tag, Globe
-} from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Image from 'next/image'
+import { ArrowLeft, Upload, Plus, X, Film, User, Loader2, CheckCircle } from 'lucide-react'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 
-const genres = ['Action', 'Comedy', 'Drama', 'Horror', 'Romance', 'Sci-Fi', 'Thriller', 'Mystery', 'Adventure', 'Documentary']
-const languages = ['English', 'Hindi', 'Bengali', 'Tamil', 'Telugu', 'Malayalam', 'Korean', 'Japanese', 'Spanish', 'French']
+interface ActorEntry { name: string; character: string; imageFile: File | null; imagePreview: string | null }
 
-interface MovieForm {
-  title: string
-  description: string
-  youtube_url: string
-  poster_url: string
-  release_year: number
-  duration_minutes: number
-  genre: string[]
-  language: string
-  director: string
-  actors: string
-  admin_rating: number
-}
+const GENRES = ['Action','Comedy','Drama','Horror','Romance','Sci-Fi','Thriller','Mystery','Adventure','Documentary','Fantasy','Crime','Animation','Biography']
 
-export default function UploadPage() {
-  const router = useRouter()
-  const pathname = usePathname()
-  const isAdmin = pathname.includes('/admin')
-  
-  const [step, setStep] = useState(1)
-  const [isLoading, setIsLoading] = useState(false)
-  const [youtubeUrl, setYoutubeUrl] = useState('')
-  const [extracting, setExtracting] = useState(false)
-  
-  const [form, setForm] = useState<MovieForm>({
-    title: '',
-    description: '',
-    youtube_url: '',
-    poster_url: '',
-    release_year: new Date().getFullYear(),
-    duration_minutes: 0,
-    genre: [],
-    language: 'English',
-    director: '',
-    actors: '',
-    admin_rating: 0,
-  })
+export default function CreatorUploadPage() {
+  const router   = useRouter()
+  const supabase = createSupabaseBrowserClient()
 
-  const extractYouTubeId = (url: string) => {
-    const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/)
-    return match ? match[1] : null
+  // Film details
+  const [title,          setTitle]          = useState('')
+  const [description,    setDescription]    = useState('')
+  const [youtubeUrl,     setYoutubeUrl]     = useState('')
+  const [trailerUrl,     setTrailerUrl]     = useState('')
+  const [releaseYear,    setReleaseYear]    = useState('')
+  const [duration,       setDuration]       = useState('')
+  const [language,       setLanguage]       = useState('')
+  const [director,       setDirector]       = useState('')
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([])
+
+  // Media files
+  const [posterFile,     setPosterFile]     = useState<File | null>(null)
+  const [posterPreview,  setPosterPreview]  = useState<string | null>(null)
+  const [thumbFile,      setThumbFile]      = useState<File | null>(null)
+  const [thumbPreview,   setThumbPreview]   = useState<string | null>(null)
+  const [backdropFile,   setBackdropFile]   = useState<File | null>(null)
+  const [backdropPreview,setBackdropPreview]= useState<string | null>(null)
+
+  // Actors
+  const [actors, setActors] = useState<ActorEntry[]>([{ name: '', character: '', imageFile: null, imagePreview: null }])
+
+  const [submitting, setSubmitting] = useState(false)
+  const [success,    setSuccess]    = useState(false)
+  const [error,      setError]      = useState('')
+
+  const posterRef   = useRef<HTMLInputElement>(null!)
+  const thumbRef    = useRef<HTMLInputElement>(null!)
+  const backdropRef = useRef<HTMLInputElement>(null!)
+
+  // Auth guard
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) { router.push('/login'); return }
+    })
+  }, [])
+
+  const handleFilePreview = (file: File, setPreview: (v: string) => void) => {
+    const reader = new FileReader()
+    reader.onload = e => setPreview(e.target?.result as string)
+    reader.readAsDataURL(file)
   }
 
-  const handleYouTubeExtract = async () => {
-    const videoId = extractYouTubeId(youtubeUrl)
-    if (!videoId) {
-      alert('Invalid YouTube URL')
-      return
+  const uploadFile = async (file: File, bucket: string, path: string): Promise<string | null> => {
+    const { data, error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
+    if (error) { console.error('Upload error:', error); return null }
+    const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path)
+    return publicUrl
+  }
+
+  const toggleGenre = (g: string) =>
+    setSelectedGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])
+
+  const addActor = () => setActors(prev => [...prev, { name: '', character: '', imageFile: null, imagePreview: null }])
+  const removeActor = (i: number) => setActors(prev => prev.filter((_, idx) => idx !== i))
+  const updateActor = (i: number, field: keyof ActorEntry, value: any) =>
+    setActors(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: value } : a))
+
+  const handleActorImage = (i: number, file: File) => {
+    updateActor(i, 'imageFile', file)
+    const reader = new FileReader()
+    reader.onload = e => updateActor(i, 'imagePreview', e.target?.result as string)
+    reader.readAsDataURL(file)
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim()) { setError('Title is required.'); return }
+    setError('')
+    setSubmitting(true)
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.push('/login'); return }
+
+      const slug = title.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now()
+      const prefix = `${user.id}/${slug}`
+
+      // Upload media
+      let posterUrl:   string | null = null
+      let thumbUrl:    string | null = null
+      let backdropUrl: string | null = null
+
+      if (posterFile)   posterUrl   = await uploadFile(posterFile,   'movies', `${prefix}/poster.${posterFile.name.split('.').pop()}`)
+      if (thumbFile)    thumbUrl    = await uploadFile(thumbFile,    'movies', `${prefix}/thumbnail.${thumbFile.name.split('.').pop()}`)
+      if (backdropFile) backdropUrl = await uploadFile(backdropFile, 'movies', `${prefix}/backdrop.${backdropFile.name.split('.').pop()}`)
+
+      // Extract youtube_id
+      const ytMatch = youtubeUrl.match(/(?:v=|youtu\.be\/)([^&?/]+)/)
+      const youtubeId = ytMatch?.[1] ?? null
+
+      // Insert movie (is_published=false → pending admin approval)
+      const { data: movieData, error: movieError } = await supabase.from('movies').insert({
+        title:            title.trim(),
+        slug,
+        description:      description.trim() || null,
+        youtube_url:      youtubeUrl.trim()  || null,
+        youtube_id:       youtubeId,
+        trailer_url:      trailerUrl.trim()  || null,
+        poster_url:       posterUrl || thumbUrl,   // use thumb as fallback poster
+        backdrop_url:     backdropUrl,
+        release_year:     releaseYear ? parseInt(releaseYear) : null,
+        duration_minutes: duration    ? parseInt(duration)    : null,
+        language:         language.trim()    || null,
+        director:         director.trim()    || null,
+        genre:            selectedGenres.length ? selectedGenres : null,
+        uploaded_by:      user.id,
+        uploaded_by_type: 'creator',
+        is_published:     false,   // ← must be approved by admin
+        is_featured:      false,
+        is_trending:      false,
+        view_count:       0,
+      }).select('id').single()
+
+      if (movieError) throw movieError
+
+      const movieId = movieData.id
+
+      // Insert actors
+      const validActors = actors.filter(a => a.name.trim())
+      for (let i = 0; i < validActors.length; i++) {
+        const a = validActors[i]
+        let actorImageUrl: string | null = null
+
+        if (a.imageFile) {
+          actorImageUrl = await uploadFile(a.imageFile, 'actors', `${prefix}/actor-${i}.${a.imageFile.name.split('.').pop()}`)
+        }
+
+        // Upsert actor
+        const { data: actorData } = await supabase.from('actors').upsert({
+          name:      a.name.trim(),
+          image_url: actorImageUrl,
+        }, { onConflict: 'name' }).select('id').single()
+
+        if (actorData?.id) {
+          await supabase.from('movie_actors').insert({
+            movie_id:       movieId,
+            actor_id:       actorData.id,
+            character_name: a.character.trim() || null,
+          })
+        }
+      }
+
+      setSuccess(true)
+      setTimeout(() => router.push('/creator'), 2500)
+    } catch (err: any) {
+      setError(err?.message || 'Upload failed. Please try again.')
+    } finally {
+      setSubmitting(false)
     }
-
-    setExtracting(true)
-    
-    // Simulate extraction (in production, call YouTube API)
-    setTimeout(() => {
-      setForm(prev => ({
-        ...prev,
-        youtube_url: youtubeUrl,
-        poster_url: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-        title: 'Extracted Movie Title',
-        description: 'This description would be extracted from YouTube. Edit as needed.',
-        duration_minutes: 120,
-      }))
-      setExtracting(false)
-      setStep(2)
-    }, 1500)
   }
 
-  const handleGenreToggle = (genre: string) => {
-    setForm(prev => ({
-      ...prev,
-      genre: prev.genre.includes(genre)
-        ? prev.genre.filter(g => g !== genre)
-        : [...prev.genre, genre]
-    }))
+  if (success) {
+    return (
+      <div style={{ minHeight: '100vh', background: 'var(--bg-void)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 80, height: 80, borderRadius: '50%', background: 'rgba(34,197,94,0.12)', border: '2px solid rgba(34,197,94,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem' }}>
+            <CheckCircle style={{ width: 40, height: 40, color: '#4ADE80' }} />
+          </div>
+          <h2 style={{ fontFamily: 'Bebas Neue,sans-serif', fontSize: '2.5rem', letterSpacing: '0.05em', marginBottom: '0.75rem', color: 'white' }}>Film Submitted!</h2>
+          <p style={{ color: 'var(--text-muted)', fontSize: '1rem', maxWidth: 360, margin: '0 auto' }}>
+            Your film is now pending admin review and will go live once approved. Redirecting to your studio…
+          </p>
+        </div>
+      </div>
+    )
   }
 
-  const handleSubmit = async () => {
-    if (!form.title || !form.youtube_url) {
-      alert('Please fill in required fields')
-      return
-    }
-
-    setIsLoading(true)
-    
-    // Simulate save
-    setTimeout(() => {
-      setIsLoading(false)
-      alert('Movie uploaded successfully!')
-      router.push(isAdmin ? '/admin' : '/creator')
-    }, 2000)
+  const inputStyle = {
+    width: '100%', background: 'rgba(255,255,255,0.03)',
+    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12,
+    padding: '0.85rem 1rem', color: 'white', fontSize: '0.92rem',
+    outline: 'none', boxSizing: 'border-box' as const,
+    fontFamily: 'Outfit, sans-serif', transition: 'border-color 0.2s',
   }
+  const labelStyle = { fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase' as const, marginBottom: '0.5rem', display: 'block' }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0b' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-void)', color: 'var(--text-primary)' }}>
+
       {/* Header */}
-      <header style={{
-        backgroundColor: 'rgba(15, 15, 20, 0.95)',
-        backdropFilter: 'blur(10px)',
-        borderBottom: '1px solid rgba(255,255,255,0.05)',
-        padding: '1rem 2rem',
-      }}>
-        <div style={{ maxWidth: '900px', margin: '0 auto', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <Link href={isAdmin ? '/admin' : '/creator'}>
-            <button style={{
-              padding: '0.5rem',
-              backgroundColor: 'rgba(255,255,255,0.05)',
-              border: 'none',
-              borderRadius: '8px',
-              color: 'white',
-              cursor: 'pointer',
-            }}>
-              <ArrowLeft style={{ width: '20px', height: '20px' }} />
-            </button>
-          </Link>
-          <div>
-            <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold' }}>Upload New Film</h1>
-            <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>
-              {isAdmin ? 'Admin Upload' : 'Creator Upload'}
-            </p>
+      <header style={{ background: 'var(--nav-bg)', backdropFilter: 'blur(24px)', borderBottom: '1px solid var(--glass-border)', padding: '0 clamp(1rem,4vw,2rem)', height: 66, display: 'flex', alignItems: 'center', gap: '1rem', position: 'sticky', top: 0, zIndex: 50 }}>
+        <button onClick={() => router.back()} className="icon-btn"><ArrowLeft size={16} /></button>
+        <div style={{ width: 1, height: 28, background: 'var(--glass-border)' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Upload size={14} style={{ color: 'white' }} />
           </div>
+          <p style={{ fontFamily: 'Bebas Neue', fontSize: '1.05rem', letterSpacing: '0.07em' }}>
+            <span className="gradient-text">Upload</span> Film
+          </p>
         </div>
       </header>
 
-      <main style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem' }}>
-        {/* Progress Steps */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', marginBottom: '3rem' }}>
-          {[1, 2, 3].map((s) => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <div style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 'bold',
-                fontSize: '0.9rem',
-                backgroundColor: step >= s ? 'rgba(139, 92, 246, 0.2)' : 'rgba(255,255,255,0.05)',
-                border: step >= s ? '2px solid #8b5cf6' : '2px solid rgba(255,255,255,0.1)',
-                color: step >= s ? '#a78bfa' : 'rgba(255,255,255,0.4)',
-              }}>
-                {step > s ? <Check style={{ width: '18px', height: '18px' }} /> : s}
-              </div>
-              <span style={{ fontSize: '0.9rem', color: step >= s ? 'white' : 'rgba(255,255,255,0.4)' }}>
-                {s === 1 ? 'Source' : s === 2 ? 'Details' : 'Review'}
-              </span>
-              {s < 3 && <div style={{ width: '40px', height: '2px', backgroundColor: step > s ? '#8b5cf6' : 'rgba(255,255,255,0.1)' }} />}
-            </div>
-          ))}
+      <main style={{ maxWidth: 820, margin: '0 auto', padding: 'clamp(2rem,5vh,3rem) clamp(1rem,4vw,2rem)' }}>
+
+        {/* Notice */}
+        <div style={{ padding: '1rem 1.25rem', borderRadius: 14, background: 'rgba(255,140,0,0.08)', border: '1px solid rgba(255,140,0,0.22)', marginBottom: '2rem', display: 'flex', gap: '0.65rem' }}>
+          <Film style={{ width: 16, height: 16, color: 'var(--brand-gold)', flexShrink: 0, marginTop: 1 }} />
+          <p style={{ fontSize: '0.85rem', color: 'rgba(255,200,80,0.85)', lineHeight: 1.5 }}>
+            All submissions are reviewed by our admin team before going live. Ensure your film meets our community guidelines.
+          </p>
         </div>
 
-        {/* Step 1: YouTube URL */}
-        {step === 1 && (
-          <div style={{
-            backgroundColor: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.05)',
-            borderRadius: '20px',
-            padding: '2.5rem',
-            textAlign: 'center',
-          }}>
-            <div style={{
-              width: '80px',
-              height: '80px',
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, rgba(255, 0, 0, 0.2), rgba(255, 0, 0, 0.1))',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 1.5rem',
-            }}>
-              <Youtube style={{ width: '40px', height: '40px', color: '#ff0000' }} />
-            </div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>Add YouTube Video</h2>
-            <p style={{ color: 'rgba(255,255,255,0.5)', marginBottom: '2rem' }}>
-              Paste a YouTube URL to automatically extract video information
-            </p>
-            
-            <div style={{ maxWidth: '500px', margin: '0 auto' }}>
-              <input
-                type="url"
-                value={youtubeUrl}
-                onChange={(e) => setYoutubeUrl(e.target.value)}
-                placeholder="https://www.youtube.com/watch?v=..."
-                style={{
-                  width: '100%',
-                  padding: '1rem 1.25rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontSize: '1rem',
-                  marginBottom: '1rem',
-                  outline: 'none',
-                }}
-              />
-              <button
-                onClick={handleYouTubeExtract}
-                disabled={!youtubeUrl || extracting}
-                style={{
-                  width: '100%',
-                  padding: '1rem',
-                  background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)',
-                  border: 'none',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  cursor: extracting ? 'not-allowed' : 'pointer',
-                  opacity: !youtubeUrl || extracting ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '0.5rem',
-                }}
-              >
-                {extracting ? (
-                  <>
-                    <Loader2 style={{ width: '20px', height: '20px', animation: 'spin 1s linear infinite' }} />
-                    Extracting...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles style={{ width: '20px', height: '20px' }} />
-                    Extract & Continue
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        )}
+        <form onSubmit={handleSubmit}>
 
-        {/* Step 2: Movie Details */}
-        {step === 2 && (
-          <div style={{
-            backgroundColor: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.05)',
-            borderRadius: '20px',
-            padding: '2rem',
-          }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Movie Details</h2>
-            
-            {/* Preview */}
-            {form.poster_url && (
-              <div style={{
-                display: 'flex',
-                gap: '1.5rem',
-                marginBottom: '2rem',
-                padding: '1rem',
-                backgroundColor: 'rgba(255,255,255,0.02)',
-                borderRadius: '12px',
-              }}>
-                <img src={form.poster_url} alt="Poster" style={{ width: '120px', height: '160px', borderRadius: '8px', objectFit: 'cover' }} />
-                <div>
-                  <h3 style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>{form.title || 'Movie Title'}</h3>
-                  <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>
-                    {form.description?.slice(0, 150)}...
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-              {/* Title */}
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
-                  <Film style={{ width: '14px', height: '14px', display: 'inline', marginRight: '0.5rem' }} />
-                  Title *
-                </label>
-                <input
-                  type="text"
-                  value={form.title}
-                  onChange={(e) => setForm(prev => ({ ...prev, title: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    outline: 'none',
-                  }}
-                />
-              </div>
-
-              {/* Description */}
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Description</label>
-                <textarea
-                  value={form.description}
-                  onChange={(e) => setForm(prev => ({ ...prev, description: e.target.value }))}
-                  rows={4}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    outline: 'none',
-                    resize: 'vertical',
-                  }}
-                />
-              </div>
-
-              {/* Director */}
+          {/* ── Section: Film Details ─────────────────── */}
+          <Section title="Film Details">
+            <div style={{ display: 'grid', gap: '1rem' }}>
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
-                  <User style={{ width: '14px', height: '14px', display: 'inline', marginRight: '0.5rem' }} />
-                  Director
-                </label>
-                <input
-                  type="text"
-                  value={form.director}
-                  onChange={(e) => setForm(prev => ({ ...prev, director: e.target.value }))}
-                  placeholder="e.g., Sun Roy"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    outline: 'none',
-                  }}
-                />
+                <label style={labelStyle}>Title *</label>
+                <input style={inputStyle} value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. The Last Horizon" required
+                  onFocus={e => e.target.style.borderColor = 'rgba(255,140,0,0.45)'}
+                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
               </div>
-
-              {/* Actors */}
               <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
-                  <User style={{ width: '14px', height: '14px', display: 'inline', marginRight: '0.5rem' }} />
-                  Actors (comma separated)
-                </label>
-                <input
-                  type="text"
-                  value={form.actors}
-                  onChange={(e) => setForm(prev => ({ ...prev, actors: e.target.value }))}
-                  placeholder="e.g., Amaresh Das, Kheya Das"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    outline: 'none',
-                  }}
-                />
+                <label style={labelStyle}>Description</label>
+                <textarea style={{ ...inputStyle, minHeight: 110, resize: 'vertical' }} value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief synopsis of the film…"
+                  onFocus={e => e.target.style.borderColor = 'rgba(255,140,0,0.45)'}
+                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
               </div>
-
-              {/* Duration */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
-                  <Clock style={{ width: '14px', height: '14px', display: 'inline', marginRight: '0.5rem' }} />
-                  Duration (minutes)
-                </label>
-                <input
-                  type="number"
-                  value={form.duration_minutes}
-                  onChange={(e) => setForm(prev => ({ ...prev, duration_minutes: parseInt(e.target.value) }))}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    outline: 'none',
-                  }}
-                />
-              </div>
-
-              {/* Year */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>Release Year</label>
-                <input
-                  type="number"
-                  value={form.release_year}
-                  onChange={(e) => setForm(prev => ({ ...prev, release_year: parseInt(e.target.value) }))}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    outline: 'none',
-                  }}
-                />
-              </div>
-
-              {/* Language */}
-              <div>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
-                  <Globe style={{ width: '14px', height: '14px', display: 'inline', marginRight: '0.5rem' }} />
-                  Language
-                </label>
-                <select
-                  value={form.language}
-                  onChange={(e) => setForm(prev => ({ ...prev, language: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem 1rem',
-                    backgroundColor: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px',
-                    color: 'white',
-                    outline: 'none',
-                  }}
-                >
-                  {languages.map(lang => <option key={lang} value={lang} style={{ background: '#1a1a1d' }}>{lang}</option>)}
-                </select>
-              </div>
-
-              {/* Admin Rating (only for admin) */}
-              {isAdmin && (
-                <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
-                    <Star style={{ width: '14px', height: '14px', display: 'inline', marginRight: '0.5rem' }} />
-                    Admin Rating
-                  </label>
-                  <div style={{ display: 'flex', gap: '0.25rem' }}>
-                    {[1,2,3,4,5,6,7,8,9,10].map(n => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setForm(prev => ({ ...prev, admin_rating: n }))}
-                        style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: '6px',
-                          border: 'none',
-                          backgroundColor: form.admin_rating >= n ? '#fbbf24' : 'rgba(255,255,255,0.05)',
-                          color: form.admin_rating >= n ? '#000' : 'rgba(255,255,255,0.5)',
-                          cursor: 'pointer',
-                          fontWeight: 'bold',
-                          fontSize: '0.8rem',
-                        }}
-                      >
-                        {n}
-                      </button>
-                    ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '1rem' }}>
+                {[
+                  { label: 'Release Year', val: releaseYear, set: setReleaseYear, placeholder: 'e.g. 2024', type: 'number' },
+                  { label: 'Duration (mins)', val: duration,    set: setDuration,    placeholder: 'e.g. 120',   type: 'number' },
+                  { label: 'Language',       val: language,    set: setLanguage,    placeholder: 'e.g. Hindi',  type: 'text'   },
+                  { label: 'Director',       val: director,    set: setDirector,    placeholder: 'e.g. Raj Kapoor', type: 'text' },
+                ].map(({ label, val, set, placeholder, type }) => (
+                  <div key={label}>
+                    <label style={labelStyle}>{label}</label>
+                    <input type={type} style={inputStyle} value={val} onChange={e => set(e.target.value)} placeholder={placeholder}
+                      onFocus={e => e.target.style.borderColor = 'rgba(255,140,0,0.45)'}
+                      onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
                   </div>
-                </div>
-              )}
-
-              {/* Genres */}
-              <div style={{ gridColumn: 'span 2' }}>
-                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'rgba(255,255,255,0.7)' }}>
-                  <Tag style={{ width: '14px', height: '14px', display: 'inline', marginRight: '0.5rem' }} />
-                  Genres
-                </label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  {genres.map(genre => (
-                    <button
-                      key={genre}
-                      type="button"
-                      onClick={() => handleGenreToggle(genre)}
-                      style={{
-                        padding: '0.5rem 1rem',
-                        borderRadius: '20px',
-                        border: 'none',
-                        backgroundColor: form.genre.includes(genre) ? 'rgba(139, 92, 246, 0.3)' : 'rgba(255,255,255,0.05)',
-                        color: form.genre.includes(genre) ? '#a78bfa' : 'rgba(255,255,255,0.6)',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                      }}
-                    >
-                      {form.genre.includes(genre) && <Check style={{ width: '14px', height: '14px', display: 'inline', marginRight: '0.25rem' }} />}
-                      {genre}
-                    </button>
-                  ))}
-                </div>
+                ))}
               </div>
             </div>
+          </Section>
 
-            {/* Navigation */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2rem' }}>
-              <button
-                onClick={() => setStep(1)}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
-                  color: 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                Back
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  background: 'linear-gradient(135deg, #7c3aed, #8b5cf6)',
-                  border: 'none',
-                  borderRadius: '10px',
-                  color: 'white',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Continue to Review
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Review & Submit */}
-        {step === 3 && (
-          <div style={{
-            backgroundColor: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.05)',
-            borderRadius: '20px',
-            padding: '2rem',
-          }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 'bold', marginBottom: '1.5rem' }}>Review & Submit</h2>
-            
-            <div style={{ display: 'flex', gap: '2rem', marginBottom: '2rem' }}>
-              <img src={form.poster_url} alt="Poster" style={{ width: '200px', borderRadius: '12px' }} />
+          {/* ── Section: Video Links ──────────────────── */}
+          <Section title="Video Links">
+            <div style={{ display: 'grid', gap: '1rem' }}>
               <div>
-                <h3 style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>{form.title}</h3>
-                <p style={{ color: 'rgba(255,255,255,0.5)', marginBottom: '1rem', lineHeight: 1.6 }}>{form.description}</p>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                  <div>
-                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Director</span>
-                    <p>{form.director || 'Not specified'}</p>
+                <label style={labelStyle}>YouTube URL (Main Film)</label>
+                <input style={inputStyle} value={youtubeUrl} onChange={e => setYoutubeUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..."
+                  onFocus={e => e.target.style.borderColor = 'rgba(255,140,0,0.45)'}
+                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
+              </div>
+              <div>
+                <label style={labelStyle}>Trailer URL (optional)</label>
+                <input style={inputStyle} value={trailerUrl} onChange={e => setTrailerUrl(e.target.value)} placeholder="https://youtube.com/watch?v=..."
+                  onFocus={e => e.target.style.borderColor = 'rgba(255,140,0,0.45)'}
+                  onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
+              </div>
+            </div>
+          </Section>
+
+          {/* ── Section: Genres ───────────────────────── */}
+          <Section title="Genres">
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {GENRES.map(g => (
+                <button type="button" key={g}
+                  onClick={() => toggleGenre(g)}
+                  className={`filter-pill${selectedGenres.includes(g) ? ' active' : ''}`}>
+                  {g}
+                </button>
+              ))}
+            </div>
+          </Section>
+
+          {/* ── Section: Images ───────────────────────── */}
+          <Section title="Images">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: '1rem' }}>
+
+              {/* Poster */}
+              <ImageUploadBox label="Poster (2:3)" preview={posterPreview} ratio="2/3"
+                onFile={f => { setPosterFile(f); handleFilePreview(f, setPosterPreview) }}
+                onClear={() => { setPosterFile(null); setPosterPreview(null) }}
+                inputRef={posterRef} accept="image/*" hint="Recommended: 400×600px" />
+
+              {/* Thumbnail */}
+              <ImageUploadBox label="Thumbnail (16:9)" preview={thumbPreview} ratio="16/9"
+                onFile={f => { setThumbFile(f); handleFilePreview(f, setPosterPreview => setThumbPreview(f ? URL.createObjectURL(f) : null)) }}
+                onClear={() => { setThumbFile(null); setThumbPreview(null) }}
+                inputRef={thumbRef} accept="image/*" hint="Recommended: 1280×720px" />
+
+              {/* Backdrop */}
+              <ImageUploadBox label="Backdrop (16:9)" preview={backdropPreview} ratio="16/9"
+                onFile={f => { setBackdropFile(f); handleFilePreview(f, setBackdropPreview) }}
+                onClear={() => { setBackdropFile(null); setBackdropPreview(null) }}
+                inputRef={backdropRef} accept="image/*" hint="Recommended: 1920×1080px" />
+            </div>
+          </Section>
+
+          {/* ── Section: Cast ─────────────────────────── */}
+          <Section title="Cast & Actors">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {actors.map((actor, i) => (
+                <div key={i} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', padding: '1rem', background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)', borderRadius: 14, flexWrap: 'wrap' }}>
+
+                  {/* Actor photo upload */}
+                  <div style={{ flexShrink: 0 }}>
+                    <label htmlFor={`actor-img-${i}`} style={{ cursor: 'pointer', display: 'block' }}>
+                      <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', border: `2px dashed ${actor.imagePreview ? 'rgba(255,140,0,0.4)' : 'rgba(255,255,255,0.15)'}`, background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'border-color 0.2s' }}>
+                        {actor.imagePreview
+                          ? <img src={actor.imagePreview} alt="actor" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          : <User style={{ width: 28, height: 28, color: 'var(--text-dim)' }} />
+                        }
+                      </div>
+                    </label>
+                    <input id={`actor-img-${i}`} type="file" accept="image/*" style={{ display: 'none' }}
+                      onChange={e => { if (e.target.files?.[0]) handleActorImage(i, e.target.files[0]) }} />
+                    <p style={{ fontSize: '0.65rem', color: 'var(--text-dim)', textAlign: 'center', marginTop: '0.3rem' }}>Photo</p>
                   </div>
-                  <div>
-                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Actors</span>
-                    <p>{form.actors || 'Not specified'}</p>
-                  </div>
-                  <div>
-                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Duration</span>
-                    <p>{form.duration_minutes} minutes</p>
-                  </div>
-                  <div>
-                    <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Language</span>
-                    <p>{form.language}</p>
-                  </div>
-                  {isAdmin && form.admin_rating > 0 && (
+
+                  <div style={{ flex: 1, minWidth: 180, display: 'grid', gap: '0.6rem' }}>
                     <div>
-                      <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Admin Rating</span>
-                      <p style={{ color: '#fbbf24', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <Star style={{ width: '16px', height: '16px', fill: '#fbbf24' }} />
-                        {form.admin_rating}/10
-                      </p>
+                      <label style={{ ...labelStyle, marginBottom: '0.3rem' }}>Actor Name</label>
+                      <input style={inputStyle} value={actor.name} onChange={e => updateActor(i, 'name', e.target.value)} placeholder="e.g. Amitabh Bachchan"
+                        onFocus={e => e.target.style.borderColor = 'rgba(255,140,0,0.45)'}
+                        onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
                     </div>
+                    <div>
+                      <label style={{ ...labelStyle, marginBottom: '0.3rem' }}>Character Name</label>
+                      <input style={inputStyle} value={actor.character} onChange={e => updateActor(i, 'character', e.target.value)} placeholder="e.g. Vijay"
+                        onFocus={e => e.target.style.borderColor = 'rgba(255,140,0,0.45)'}
+                        onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'} />
+                    </div>
+                  </div>
+
+                  {actors.length > 1 && (
+                    <button type="button" onClick={() => removeActor(i)} style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, padding: '0.4rem', cursor: 'pointer', color: '#f87171', flexShrink: 0, alignSelf: 'flex-start' }}>
+                      <X size={14} />
+                    </button>
                   )}
                 </div>
-                
-                <div style={{ marginTop: '1rem' }}>
-                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.85rem' }}>Genres</span>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    {form.genre.map(g => (
-                      <span key={g} style={{
-                        padding: '0.25rem 0.75rem',
-                        backgroundColor: 'rgba(139, 92, 246, 0.2)',
-                        borderRadius: '20px',
-                        fontSize: '0.85rem',
-                        color: '#a78bfa',
-                      }}>{g}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+              ))}
 
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <button
-                onClick={() => setStep(2)}
-                style={{
-                  padding: '0.75rem 1.5rem',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px',
-                  color: 'white',
-                  cursor: 'pointer',
-                }}
-              >
-                Back to Edit
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={isLoading}
-                style={{
-                  padding: '0.75rem 2rem',
-                  background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-                  border: 'none',
-                  borderRadius: '10px',
-                  color: 'white',
-                  fontWeight: 600,
-                  cursor: isLoading ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                }}
-              >
-                {isLoading ? (
-                  <Loader2 style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }} />
-                ) : (
-                  <Check style={{ width: '18px', height: '18px' }} />
-                )}
-                {isLoading ? 'Publishing...' : 'Publish Movie'}
+              <button type="button" onClick={addActor} className="btn-ghost" style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                <Plus size={15} /> Add Actor
               </button>
             </div>
-          </div>
-        )}
+          </Section>
+
+          {/* Error */}
+          {error && (
+            <div style={{ padding: '0.9rem 1.1rem', borderRadius: 12, background: 'rgba(239,68,68,0.09)', border: '1px solid rgba(239,68,68,0.25)', marginBottom: '1.5rem', color: '#fca5a5', fontSize: '0.88rem' }}>
+              {error}
+            </div>
+          )}
+
+          {/* Submit */}
+          <button type="submit" disabled={submitting} className="btn-fire" style={{ width: '100%', justifyContent: 'center', padding: '1.1rem', fontSize: '1rem', fontWeight: 700, opacity: submitting ? 0.75 : 1, cursor: submitting ? 'not-allowed' : 'pointer' }}>
+            {submitting
+              ? <><Loader2 style={{ width: 18, height: 18, animation: 'spin 1s linear infinite' }} /> Submitting…</>
+              : <><Upload size={17} /> Submit for Review</>
+            }
+          </button>
+          <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </form>
       </main>
+    </div>
+  )
+}
 
-      <style jsx>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+/* ── Helpers ──────────────────────────────────────────────── */
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: '2rem' }}>
+      <h3 style={{ fontFamily: 'Bebas Neue,sans-serif', fontSize: '1.1rem', letterSpacing: '0.08em', color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        <span style={{ display: 'inline-block', width: 3, height: '1em', background: 'linear-gradient(180deg,var(--brand-core),var(--brand-gold))', borderRadius: 2 }} />
+        {title}
+      </h3>
+      <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--glass-border)', borderRadius: 16, padding: '1.25rem' }}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ImageUploadBox({ label, preview, ratio, onFile, onClear, inputRef, accept, hint }: {
+  label: string; preview: string | null; ratio: string
+  onFile: (f: File) => void; onClear: () => void
+  inputRef: React.RefObject<HTMLInputElement>; accept: string; hint?: string
+}) {
+  return (
+    <div>
+      <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>{label}</p>
+      <div
+        onClick={() => !preview && inputRef.current?.click()}
+        style={{
+          aspectRatio: ratio, borderRadius: 12, overflow: 'hidden', position: 'relative',
+          border: `2px dashed ${preview ? 'rgba(255,140,0,0.4)' : 'rgba(255,255,255,0.12)'}`,
+          background: 'var(--bg-card)', cursor: preview ? 'default' : 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'border-color 0.2s',
+        }}
+        onMouseOver={e => { if (!preview) (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,140,0,0.35)' }}
+        onMouseOut={e => { if (!preview) (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)' }}
+      >
+        {preview
+          ? <>
+              <img src={preview} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <button type="button" onClick={onClear}
+                style={{ position: 'absolute', top: 6, right: 6, width: 26, height: 26, borderRadius: '50%', background: 'rgba(0,0,0,0.7)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>
+                <X size={13} />
+              </button>
+            </>
+          : <div style={{ textAlign: 'center', padding: '1rem' }}>
+              <Upload style={{ width: 28, height: 28, color: 'var(--text-dim)', margin: '0 auto 0.5rem' }} />
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>Click to upload</p>
+              {hint && <p style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.2)', marginTop: '0.25rem' }}>{hint}</p>}
+            </div>
+        }
+      </div>
+      <input ref={inputRef} type="file" accept={accept} style={{ display: 'none' }}
+        onChange={e => { if (e.target.files?.[0]) onFile(e.target.files[0]) }} />
     </div>
   )
 }

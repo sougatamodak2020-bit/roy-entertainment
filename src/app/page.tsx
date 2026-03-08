@@ -288,7 +288,8 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════
           CONTENT SECTIONS
           ═══════════════════════════════════════════ */}
-      <div className="content-area">
+      <div style={{ height: 'clamp(3rem, 6vh, 5rem)' }} />
+      <div className="content-area" style={{ paddingTop: 0 }}>
         <div className="container">
 
           {/* Continue Watching */}
@@ -367,6 +368,114 @@ export default function HomePage() {
           )}
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════
+          BECOME A CREATOR BANNER
+          ═══════════════════════════════════════════ */}
+      <section style={{
+        margin: '0',
+        padding: 'clamp(3rem, 7vh, 5rem) clamp(1rem, 5vw, 3rem)',
+        position: 'relative',
+        overflow: 'hidden',
+        background: 'linear-gradient(135deg, rgba(255,98,0,0.08) 0%, rgba(5,5,7,0) 50%, rgba(255,183,51,0.06) 100%)',
+        borderTop: '1px solid rgba(255,140,0,0.1)',
+      }}>
+        {/* Ambient glow blobs */}
+        <div style={{
+          position: 'absolute', top: '-60%', left: '10%',
+          width: 500, height: 500, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(255,98,0,0.12) 0%, transparent 70%)',
+          filter: 'blur(60px)', pointerEvents: 'none',
+        }} />
+        <div style={{
+          position: 'absolute', bottom: '-40%', right: '5%',
+          width: 400, height: 400, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(255,183,51,0.09) 0%, transparent 70%)',
+          filter: 'blur(60px)', pointerEvents: 'none',
+        }} />
+
+        <div style={{
+          maxWidth: 900, margin: '0 auto',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 'clamp(2rem, 5vw, 4rem)',
+          alignItems: 'center',
+          position: 'relative', zIndex: 1,
+        }}>
+          {/* Left — text */}
+          <div>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
+              padding: '0.28rem 0.85rem', borderRadius: 9999, marginBottom: '1.25rem',
+              background: 'rgba(255,98,0,0.12)', border: '1px solid rgba(255,140,0,0.25)',
+              fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.18em',
+              textTransform: 'uppercase', color: '#FFB733',
+            }}>
+              🎬 For Filmmakers
+            </div>
+
+            <h2 style={{
+              fontFamily: 'Bebas Neue, sans-serif',
+              fontSize: 'clamp(2.2rem, 5vw, 3.5rem)',
+              letterSpacing: '0.05em', lineHeight: 1.05,
+              marginBottom: '1rem',
+              background: 'linear-gradient(90deg, #ffffff 0%, #FFB733 60%, #FF6200 100%)',
+              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+            }}>
+              Share Your Story<br />With The World
+            </h2>
+
+            <p style={{
+              color: 'var(--text-secondary)', fontSize: 'clamp(0.9rem, 2vw, 1.05rem)',
+              lineHeight: 1.7, marginBottom: '1.75rem', maxWidth: 420,
+            }}>
+              Upload your films, build an audience, and track performance — all from your personal Creator Studio on Roy Entertainment.
+            </p>
+
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <Link href="/creator">
+                <button className="btn-fire" style={{
+                  padding: '0.85rem 2rem', fontSize: '0.95rem', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: '0.5rem',
+                }}>
+                  🎬 Open Creator Studio
+                </button>
+              </Link>
+              <Link href="/creator">
+                <button className="btn-ghost" style={{ padding: '0.85rem 1.5rem', fontSize: '0.9rem' }}>
+                  Learn More
+                </button>
+              </Link>
+            </div>
+          </div>
+
+          {/* Right — feature cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {[
+              { icon: '📤', title: 'Upload Films',    desc: 'Share your movies in minutes with simple upload tools' },
+              { icon: '📊', title: 'Track Analytics', desc: 'See views, ratings and audience engagement in real-time' },
+              { icon: '✅', title: 'Get Featured',    desc: 'Top content gets promoted across the platform by our team' },
+            ].map(({ icon, title, desc }) => (
+              <div key={title} style={{
+                display: 'flex', alignItems: 'flex-start', gap: '1rem',
+                padding: '0.9rem 1.1rem', borderRadius: 14,
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,140,0,0.1)',
+                transition: 'border-color 0.2s, background 0.2s',
+              }}
+                onMouseOver={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,140,0,0.28)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,98,0,0.07)' }}
+                onMouseOut={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,140,0,0.1)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)' }}
+              >
+                <span style={{ fontSize: '1.4rem', lineHeight: 1, marginTop: 2 }}>{icon}</span>
+                <div>
+                  <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.2rem' }}>{title}</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <Footer />
       <AIChatbot />

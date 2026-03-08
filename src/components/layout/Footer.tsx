@@ -2,14 +2,21 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { Facebook, Twitter, Instagram, Youtube, Mail, Flame } from 'lucide-react'
+import { Facebook, Youtube, Mail, Flame } from 'lucide-react'
+
+// Twitter and Instagram removed per request
+const SOCIALS = [
+  { Icon: Facebook, href: '#', label: 'Facebook' },
+  { Icon: Youtube,  href: '#', label: 'YouTube'  },
+  { Icon: Mail,     href: '#', label: 'Email'    },
+]
 
 const NAV_COLS = {
   Explore: [
-    { label: 'Movies',       href: '/movies'                     },
-    { label: 'Series',       href: '/series'                     },
-    { label: 'New Releases', href: '/movies?filter=new'          },
-    { label: 'Trending',     href: '/movies?filter=trending'     },
+    { label: 'Movies',       href: '/movies'                 },
+    { label: 'Series',       href: '/series'                 },
+    { label: 'New Releases', href: '/movies?filter=new'      },
+    { label: 'Trending',     href: '/movies?filter=trending' },
   ],
   Company: [
     { label: 'About Us', href: '#' },
@@ -25,20 +32,11 @@ const NAV_COLS = {
   ],
 }
 
-const SOCIALS = [
-  { Icon: Facebook,  href: '#', label: 'Facebook'  },
-  { Icon: Twitter,   href: '#', label: 'Twitter'   },
-  { Icon: Instagram, href: '#', label: 'Instagram' },
-  { Icon: Youtube,   href: '#', label: 'YouTube'   },
-  { Icon: Mail,      href: '#', label: 'Email'     },
-]
-
 export function Footer() {
   const year = new Date().getFullYear()
 
   return (
     <footer className="footer">
-      {/* Ambient radial glow */}
       <div style={{
         position: 'absolute', bottom: 0, left: '50%', transform: 'translateX(-50%)',
         width: 650, height: 280,
@@ -110,14 +108,11 @@ export function Footer() {
           ))}
         </div>
 
-        {/* Bottom bar */}
         <div className="footer-bottom">
           <p>© {year} Roy Entertainment. All rights reserved.</p>
           <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
             {['Privacy Policy', 'Terms of Service'].map(t => (
-              <Link key={t} href="#" className="footer-link" style={{ padding: 0, fontSize: '0.8rem' }}>
-                {t}
-              </Link>
+              <Link key={t} href="#" className="footer-link" style={{ padding: 0, fontSize: '0.8rem' }}>{t}</Link>
             ))}
           </div>
           <p style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>

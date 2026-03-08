@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { useRouter, usePathname } from 'next/navigation'
 import { Search, Menu, X, LogOut, Settings, Film, Heart, ChevronDown, User, Moon, Sun } from 'lucide-react'
 import { useAuth } from '@/providers/AuthProvider'
+import { createSupabaseBrowserClient } from '@/lib/supabase'
 
 /* ── Theme hook ── */
 function useTheme() {
@@ -32,6 +33,7 @@ export function Navigation() {
   const router   = useRouter()
   const pathname = usePathname()
   const { theme, toggle } = useTheme()
+  const [userRole, setUserRole] = useState<string | null>(null)
 
   const [menuOpen,    setMenuOpen]    = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
@@ -47,6 +49,19 @@ export function Navigation() {
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
+
+  // Fetch user role whenever auth user changes
+  // Always hit profiles table — it's the source of truth.
+  // user_metadata only gets updated on auth.updateUser(), not when you edit Supabase directly.
+  useEffect(() => {
+    if (!user) { setUserRole(null); return }
+    const sb = createSupabaseBrowserClient()
+    sb.from('profiles').select('role').eq('id', user.id).maybeSingle()
+      .then(({ data }) => {
+        const role = data?.role || user.user_metadata?.role || 'audience'
+        setUserRole(role)
+      })
+  }, [user])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -97,6 +112,7 @@ export function Navigation() {
     { href: '/movies',  label: 'Movies'  },
     { href: '/series',  label: 'Series'  },
     ...(user ? [{ href: '/creator', label: 'Studio' }] : []),
+    ...(userRole === 'admin' ? [{ href: '/admin', label: 'Admin' }] : []),
   ]
 
   return (
@@ -197,11 +213,11 @@ export function Navigation() {
                     </div>
 
                     {[
-                      { href: '/profile',   Icon: User,     label: 'My Profile'    },
-                      { href: '/favorites', Icon: Heart,    label: 'Favorites'     },
-                      { href: '/creator',   Icon: Film,     label: 'Creator Studio'},
-                      { href: '/admin',     Icon: Settings, label: 'Admin Panel'   },
-                    ].map(({ href, Icon, label }) => (
+                      { href: '/profile',   Icon: User,     label: 'My Profile',     show: true },
+                      { href: '/favorites', Icon: Heart,    label: 'Favorites',       show: true },
+                      { href: '/creator',   Icon: Film,     label: 'Creator Studio',  show: true },
+                      { href: '/admin',     Icon: Settings, label: 'Admin Panel',     show: userRole === 'admin' },
+                    ].filter(item => item.show).map(({ href, Icon, label }) => (
                       <Link key={href} href={href} style={{ textDecoration: 'none' }}>
                         <DropItem Icon={Icon} label={label} onClick={() => setProfileOpen(false)} />
                       </Link>
