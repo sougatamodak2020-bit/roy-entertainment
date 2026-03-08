@@ -8,16 +8,15 @@ import { Footer } from '@/components/layout/Footer'
 import { AIChatbot } from '@/components/ai/AIChatbot'
 import MovieCard from '@/components/movies/MovieCard'
 import { Swiper, SwiperSlide } from 'swiper/react'
-import { Autoplay, Pagination, Navigation as SwiperNavigation, EffectFade, EffectCreative } from 'swiper/modules'
+import { Autoplay, Pagination, Navigation as SwiperNavigation, EffectFade } from 'swiper/modules'
 import type { Swiper as SwiperType } from 'swiper'
 import 'swiper/css'
 import 'swiper/css/pagination'
 import 'swiper/css/navigation'
 import 'swiper/css/effect-fade'
-import 'swiper/css/effect-creative'
 import {
   Play, Info, ChevronRight, ChevronLeft, Flame, Sparkles,
-  Clock, Star, History, TrendingUp, Award, Volume2, VolumeX
+  Clock, Star, History, TrendingUp, Award
 } from 'lucide-react'
 import { createBrowserClient } from '@supabase/auth-helpers-nextjs'
 
@@ -125,22 +124,15 @@ export default function HomePage() {
   const buildHeroMovies = (movies: any[]): any[] => {
     const scored = movies.map(m => {
       let score = 0
-      // Featured movies get highest priority
       if (m.is_featured) score += 100
-      // Trending movies get high priority
       if (m.is_trending) score += 80
-      // High rated movies
       if (m.admin_rating) score += m.admin_rating * 5
       if (m.rating) score += m.rating * 3
-      // Popular by views
       if (m.view_count) score += Math.min(m.view_count / 100, 30)
-      // Recent uploads get slight boost
       const daysOld = (Date.now() - new Date(m.created_at).getTime()) / (1000 * 60 * 60 * 24)
       if (daysOld < 7) score += 20
       else if (daysOld < 30) score += 10
-      // Must have a backdrop or poster
       if (!m.backdrop_url && !m.poster_url) score -= 50
-
       return { ...m, _score: score }
     })
 
@@ -154,6 +146,11 @@ export default function HomePage() {
     if (movie.is_trending) return { label: 'Trending', icon: TrendingUp, color: '#FF6200' }
     if ((movie.admin_rating || 0) >= 8) return { label: 'Top Rated', icon: Star, color: '#22C55E' }
     return { label: 'New', icon: Sparkles, color: '#8B5CF6' }
+  }
+
+  // Get the best image URL for hero (prefer backdrop, fallback to poster)
+  const getHeroImage = (movie: any): string => {
+    return movie.backdrop_url || movie.poster_url || '/placeholder-hero.jpg'
   }
 
   if (loading) {
@@ -188,13 +185,22 @@ export default function HomePage() {
       <Navigation />
 
       {/* ═══════════════════════════════════════════
-          CINEMATIC HERO CAROUSEL
+          CINEMATIC HERO CAROUSEL - FULL SCREEN IMAGES
           ═══════════════════════════════════════════ */}
       {heroMovies.length > 0 ? (
         <section
           className="hero-section"
           onMouseEnter={() => setIsHeroHovered(true)}
           onMouseLeave={() => setIsHeroHovered(false)}
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: 'calc(100svh - var(--nav-height, 66px))',
+            minHeight: 500,
+            maxHeight: 900,
+            marginTop: 'var(--nav-height, 66px)',
+            overflow: 'hidden',
+          }}
         >
           <Swiper
             onSwiper={(swiper) => { swiperRef.current = swiper }}
@@ -221,177 +227,245 @@ export default function HomePage() {
             {heroMovies.map((movie, idx) => {
               const badge = getMovieBadge(movie)
               const BadgeIcon = badge.icon
+              const heroImageUrl = getHeroImage(movie)
 
               return (
                 <SwiperSlide key={movie.id}>
                   {({ isActive }) => (
                     <>
-                      {/* Background image with Ken Burns effect */}
+                      {/* ═══ FULL SCREEN BACKGROUND IMAGE ═══ */}
                       <div
-                        className="hero-backdrop"
                         style={{
-                          transform: isActive ? 'scale(1.05)' : 'scale(1)',
-                          transition: 'transform 8s ease-out',
-                        }}
-                      >
-                        <Image
-                          src={movie.backdrop_url || movie.poster_url || '/placeholder-wide.jpg'}
-                          alt={movie.title}
-                          fill
-                          priority={idx === 0}
-                          sizes="100vw"
-                          quality={90}
-                          style={{
-                            objectFit: 'cover',
-                            objectPosition: 'center 20%',
-                          }}
-                        />
-                        {/* Color grading overlay */}
-                        <div style={{
                           position: 'absolute',
                           inset: 0,
-                          background: 'linear-gradient(45deg, rgba(255,98,0,0.08) 0%, transparent 50%)',
-                          mixBlendMode: 'overlay',
-                        }} />
+                          width: '100%',
+                          height: '100%',
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {/* Image container with Ken Burns effect */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: '-5%', // Overflow for Ken Burns zoom
+                            width: '110%',
+                            height: '110%',
+                            transform: isActive ? 'scale(1.05)' : 'scale(1)',
+                            transition: 'transform 10s ease-out',
+                          }}
+                        >
+                          <Image
+                            src={heroImageUrl}
+                            alt={movie.title}
+                            fill
+                            priority={idx === 0}
+                            sizes="100vw"
+                            quality={90}
+                            style={{
+                              objectFit: 'cover',
+                              objectPosition: 'center center',
+                            }}
+                            onError={(e) => {
+                              // Fallback if image fails to load
+                              const target = e.target as HTMLImageElement
+                              target.src = '/placeholder-hero.jpg'
+                            }}
+                          />
+                        </div>
+
+                        {/* Dark overlay for better text readability */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'rgba(0,0,0,0.35)',
+                          }}
+                        />
+
+                        {/* Color grading overlay - warm cinematic tone */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            background: 'linear-gradient(45deg, rgba(255,98,0,0.1) 0%, transparent 60%)',
+                            mixBlendMode: 'overlay',
+                          }}
+                        />
                       </div>
 
-                      {/* Multi-layer gradient overlays */}
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: `
-                          linear-gradient(to top,
-                            var(--bg-void) 0%,
-                            rgba(12,10,7,0.95) 8%,
-                            rgba(12,10,7,0.7) 25%,
-                            rgba(12,10,7,0.3) 50%,
-                            rgba(12,10,7,0.1) 70%,
-                            transparent 100%
-                          )
-                        `,
-                        zIndex: 2,
-                      }} />
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: `
-                          linear-gradient(to right,
-                            rgba(12,10,7,0.9) 0%,
-                            rgba(12,10,7,0.6) 25%,
-                            rgba(12,10,7,0.2) 50%,
-                            transparent 70%
-                          )
-                        `,
-                        zIndex: 2,
-                      }} />
+                      {/* ═══ GRADIENT OVERLAYS ═══ */}
+                      {/* Bottom gradient - strongest for text area */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background: `
+                            linear-gradient(to top,
+                              var(--bg-void) 0%,
+                              rgba(12,10,7,0.98) 5%,
+                              rgba(12,10,7,0.85) 15%,
+                              rgba(12,10,7,0.6) 30%,
+                              rgba(12,10,7,0.3) 50%,
+                              rgba(12,10,7,0.1) 70%,
+                              transparent 100%
+                            )
+                          `,
+                          zIndex: 2,
+                        }}
+                      />
 
-                      {/* Ambient fire glow */}
-                      <div style={{
-                        position: 'absolute',
-                        bottom: 0,
-                        left: 0,
-                        width: '60%',
-                        height: '50%',
-                        background: 'radial-gradient(ellipse at bottom left, rgba(255,98,0,0.15) 0%, transparent 70%)',
-                        zIndex: 3,
-                        pointerEvents: 'none',
-                        opacity: isActive ? 1 : 0,
-                        transition: 'opacity 1s ease',
-                      }} />
+                      {/* Left gradient - for content area */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          background: `
+                            linear-gradient(to right,
+                              rgba(12,10,7,0.85) 0%,
+                              rgba(12,10,7,0.6) 20%,
+                              rgba(12,10,7,0.3) 40%,
+                              transparent 60%
+                            )
+                          `,
+                          zIndex: 2,
+                        }}
+                      />
 
-                      {/* Content */}
-                      <div className="hero-content" style={{ zIndex: 10 }}>
+                      {/* Ambient fire glow - bottom left */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          bottom: '-10%',
+                          left: '-10%',
+                          width: '60%',
+                          height: '60%',
+                          background: 'radial-gradient(ellipse at center, rgba(255,98,0,0.2) 0%, transparent 70%)',
+                          zIndex: 3,
+                          pointerEvents: 'none',
+                          opacity: isActive ? 1 : 0,
+                          transition: 'opacity 1.5s ease',
+                          filter: 'blur(40px)',
+                        }}
+                      />
+
+                      {/* ═══ CONTENT ═══ */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          inset: 0,
+                          display: 'flex',
+                          alignItems: 'flex-end',
+                          padding: '0 clamp(1.5rem, 6vw, 5rem) clamp(4rem, 10vh, 7rem)',
+                          zIndex: 10,
+                        }}
+                      >
                         <div
-                          className="hero-text-block"
                           style={{
+                            maxWidth: 'min(650px, 90vw)',
                             opacity: isActive ? 1 : 0,
-                            transform: isActive ? 'translateY(0)' : 'translateY(30px)',
-                            transition: 'all 0.8s cubic-bezier(0.16,1,0.3,1) 0.3s',
+                            transform: isActive ? 'translateY(0)' : 'translateY(40px)',
+                            transition: 'all 0.9s cubic-bezier(0.16,1,0.3,1) 0.4s',
                           }}
                         >
                           {/* Badge */}
-                          <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.5rem',
-                            padding: '0.4rem 1rem',
-                            borderRadius: 9999,
-                            background: `linear-gradient(135deg, ${badge.color}22, ${badge.color}11)`,
-                            border: `1px solid ${badge.color}44`,
-                            marginBottom: '1.25rem',
-                            backdropFilter: 'blur(10px)',
-                          }}>
-                            <BadgeIcon style={{ width: 14, height: 14, color: badge.color }} />
-                            <span style={{
-                              fontSize: '0.75rem',
-                              fontWeight: 700,
-                              letterSpacing: '0.15em',
-                              textTransform: 'uppercase',
-                              color: badge.color,
-                            }}>
+                          <div
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '0.5rem',
+                              padding: '0.45rem 1.1rem',
+                              borderRadius: 9999,
+                              background: `linear-gradient(135deg, ${badge.color}25, ${badge.color}10)`,
+                              border: `1px solid ${badge.color}50`,
+                              marginBottom: '1.25rem',
+                              backdropFilter: 'blur(12px)',
+                              boxShadow: `0 4px 20px ${badge.color}20`,
+                            }}
+                          >
+                            <BadgeIcon style={{ width: 15, height: 15, color: badge.color }} />
+                            <span
+                              style={{
+                                fontSize: '0.78rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.12em',
+                                textTransform: 'uppercase',
+                                color: badge.color,
+                              }}
+                            >
                               {badge.label}
                             </span>
                           </div>
 
                           {/* Title */}
-                          <h1 style={{
-                            fontFamily: 'Bebas Neue, sans-serif',
-                            fontSize: 'clamp(2.2rem, 6vw, 4.5rem)',
-                            letterSpacing: '0.03em',
-                            lineHeight: 0.95,
-                            color: 'white',
-                            textShadow: '0 4px 30px rgba(0,0,0,0.5)',
-                            marginBottom: '1rem',
-                            maxWidth: '90%',
-                          }}>
+                          <h1
+                            style={{
+                              fontFamily: 'Bebas Neue, sans-serif',
+                              fontSize: 'clamp(2.5rem, 7vw, 5rem)',
+                              letterSpacing: '0.02em',
+                              lineHeight: 0.95,
+                              color: 'white',
+                              textShadow: '0 4px 40px rgba(0,0,0,0.6), 0 2px 10px rgba(0,0,0,0.4)',
+                              marginBottom: '1.1rem',
+                            }}
+                          >
                             {movie.title}
                           </h1>
 
                           {/* Meta row */}
-                          <div style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            flexWrap: 'wrap',
-                            gap: '0.75rem',
-                            marginBottom: '1.25rem',
-                            fontSize: '0.9rem',
-                            color: 'var(--text-secondary)',
-                          }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              flexWrap: 'wrap',
+                              gap: '0.85rem',
+                              marginBottom: '1.35rem',
+                              fontSize: '0.92rem',
+                              color: 'rgba(255,255,255,0.85)',
+                            }}
+                          >
                             {movie.release_year && (
-                              <span style={{
-                                padding: '0.25rem 0.7rem',
-                                background: 'rgba(255,255,255,0.1)',
-                                borderRadius: 6,
-                                fontWeight: 600,
-                              }}>
+                              <span
+                                style={{
+                                  padding: '0.3rem 0.8rem',
+                                  background: 'rgba(255,255,255,0.12)',
+                                  borderRadius: 8,
+                                  fontWeight: 600,
+                                  backdropFilter: 'blur(8px)',
+                                }}
+                              >
                                 {movie.release_year}
                               </span>
                             )}
                             {movie.duration_minutes && (
-                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                                <Clock style={{ width: 14, height: 14, opacity: 0.7 }} />
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                <Clock style={{ width: 15, height: 15, opacity: 0.8 }} />
                                 {movie.duration_minutes} min
                               </span>
                             )}
                             {movie.admin_rating && (
-                              <span style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '0.35rem',
-                                color: '#FFB733',
-                                fontWeight: 700,
-                              }}>
-                                <Star style={{ width: 14, height: 14, fill: '#FFB733' }} />
+                              <span
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.4rem',
+                                  color: '#FFB733',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                <Star style={{ width: 15, height: 15, fill: '#FFB733' }} />
                                 {movie.admin_rating.toFixed(1)}
                               </span>
                             )}
                             {movie.language && (
-                              <span style={{
-                                padding: '0.2rem 0.6rem',
-                                background: 'rgba(255,255,255,0.08)',
-                                borderRadius: 4,
-                                fontSize: '0.8rem',
-                              }}>
+                              <span
+                                style={{
+                                  padding: '0.25rem 0.7rem',
+                                  background: 'rgba(255,255,255,0.08)',
+                                  borderRadius: 6,
+                                  fontSize: '0.85rem',
+                                  backdropFilter: 'blur(8px)',
+                                }}
+                              >
                                 {movie.language}
                               </span>
                             )}
@@ -399,23 +473,29 @@ export default function HomePage() {
 
                           {/* Genres */}
                           {movie.genre?.length > 0 && (
-                            <div style={{
-                              display: 'flex',
-                              gap: '0.5rem',
-                              flexWrap: 'wrap',
-                              marginBottom: '1.25rem',
-                            }}>
+                            <div
+                              style={{
+                                display: 'flex',
+                                gap: '0.55rem',
+                                flexWrap: 'wrap',
+                                marginBottom: '1.35rem',
+                              }}
+                            >
                               {movie.genre.slice(0, 3).map((g: string, i: number) => (
-                                <span key={i} style={{
-                                  padding: '0.3rem 0.85rem',
-                                  borderRadius: 9999,
-                                  background: 'linear-gradient(135deg, rgba(255,98,0,0.2), rgba(255,183,51,0.1))',
-                                  border: '1px solid rgba(255,140,0,0.3)',
-                                  color: '#FFD080',
-                                  fontSize: '0.78rem',
-                                  fontWeight: 600,
-                                  letterSpacing: '0.02em',
-                                }}>
+                                <span
+                                  key={i}
+                                  style={{
+                                    padding: '0.35rem 1rem',
+                                    borderRadius: 9999,
+                                    background: 'linear-gradient(135deg, rgba(255,98,0,0.25), rgba(255,183,51,0.12))',
+                                    border: '1px solid rgba(255,140,0,0.35)',
+                                    color: '#FFD080',
+                                    fontSize: '0.82rem',
+                                    fontWeight: 600,
+                                    letterSpacing: '0.02em',
+                                    backdropFilter: 'blur(8px)',
+                                  }}
+                                >
                                   {g}
                                 </span>
                               ))}
@@ -424,34 +504,37 @@ export default function HomePage() {
 
                           {/* Description */}
                           {movie.description && (
-                            <p style={{
-                              fontSize: 'clamp(0.88rem, 1.8vw, 1.05rem)',
-                              color: 'rgba(255,255,255,0.75)',
-                              lineHeight: 1.7,
-                              marginBottom: '2rem',
-                              maxWidth: 540,
-                              display: '-webkit-box',
-                              WebkitLineClamp: 3,
-                              WebkitBoxOrient: 'vertical',
-                              overflow: 'hidden',
-                            }}>
+                            <p
+                              style={{
+                                fontSize: 'clamp(0.9rem, 1.8vw, 1.08rem)',
+                                color: 'rgba(255,255,255,0.75)',
+                                lineHeight: 1.75,
+                                marginBottom: '2.25rem',
+                                maxWidth: 560,
+                                display: '-webkit-box',
+                                WebkitLineClamp: 3,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                                textShadow: '0 2px 10px rgba(0,0,0,0.3)',
+                              }}
+                            >
                               {movie.description}
                             </p>
                           )}
 
                           {/* CTA Buttons */}
-                          <div style={{ display: 'flex', gap: '0.85rem', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                             <Link href={`/watch/${movie.slug}`}>
                               <button
                                 className="btn-fire"
                                 style={{
-                                  fontSize: '1rem',
-                                  padding: '1rem 2.2rem',
-                                  gap: '0.6rem',
-                                  boxShadow: '0 8px 32px rgba(255,98,0,0.4), 0 0 0 1px rgba(255,183,51,0.2)',
+                                  fontSize: '1.05rem',
+                                  padding: '1.1rem 2.5rem',
+                                  gap: '0.65rem',
+                                  boxShadow: '0 10px 40px rgba(255,98,0,0.45), 0 0 0 1px rgba(255,183,51,0.25)',
                                 }}
                               >
-                                <Play style={{ width: 20, height: 20, fill: 'white' }} />
+                                <Play style={{ width: 22, height: 22, fill: 'white' }} />
                                 Watch Now
                               </button>
                             </Link>
@@ -459,14 +542,15 @@ export default function HomePage() {
                               <button
                                 className="btn-ghost"
                                 style={{
-                                  fontSize: '0.95rem',
-                                  padding: '1rem 1.8rem',
-                                  gap: '0.5rem',
-                                  background: 'rgba(255,255,255,0.08)',
+                                  fontSize: '1rem',
+                                  padding: '1.1rem 2rem',
+                                  gap: '0.55rem',
+                                  background: 'rgba(255,255,255,0.1)',
                                   backdropFilter: 'blur(20px)',
+                                  border: '1px solid rgba(255,255,255,0.2)',
                                 }}
                               >
-                                <Info style={{ width: 18, height: 18 }} />
+                                <Info style={{ width: 20, height: 20 }} />
                                 More Info
                               </button>
                             </Link>
@@ -480,22 +564,23 @@ export default function HomePage() {
             })}
           </Swiper>
 
-          {/* Custom Navigation Arrows */}
+          {/* ═══ CUSTOM NAVIGATION ARROWS ═══ */}
           {heroMovies.length > 1 && (
             <>
               <button
                 className="hero-nav-prev"
+                aria-label="Previous slide"
                 style={{
                   position: 'absolute',
                   left: 'clamp(1rem, 3vw, 2.5rem)',
                   top: '50%',
                   transform: 'translateY(-50%)',
                   zIndex: 20,
-                  width: 52,
-                  height: 52,
+                  width: 56,
+                  height: 56,
                   borderRadius: '50%',
-                  background: 'rgba(0,0,0,0.4)',
-                  backdropFilter: 'blur(10px)',
+                  background: 'rgba(0,0,0,0.5)',
+                  backdropFilter: 'blur(12px)',
                   border: '1px solid rgba(255,255,255,0.15)',
                   display: 'flex',
                   alignItems: 'center',
@@ -503,32 +588,36 @@ export default function HomePage() {
                   cursor: 'pointer',
                   color: 'white',
                   opacity: isHeroHovered ? 1 : 0,
-                  transition: 'all 0.3s ease',
+                  transition: 'all 0.4s ease',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,98,0,0.5)'
-                  e.currentTarget.style.borderColor = 'rgba(255,140,0,0.5)'
+                  e.currentTarget.style.background = 'rgba(255,98,0,0.6)'
+                  e.currentTarget.style.borderColor = 'rgba(255,140,0,0.6)'
+                  e.currentTarget.style.transform = 'translateY(-50%) scale(1.08)'
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(0,0,0,0.4)'
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.5)'
                   e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
+                  e.currentTarget.style.transform = 'translateY(-50%) scale(1)'
                 }}
               >
-                <ChevronLeft style={{ width: 24, height: 24 }} />
+                <ChevronLeft style={{ width: 26, height: 26 }} />
               </button>
               <button
                 className="hero-nav-next"
+                aria-label="Next slide"
                 style={{
                   position: 'absolute',
                   right: 'clamp(1rem, 3vw, 2.5rem)',
                   top: '50%',
                   transform: 'translateY(-50%)',
                   zIndex: 20,
-                  width: 52,
-                  height: 52,
+                  width: 56,
+                  height: 56,
                   borderRadius: '50%',
-                  background: 'rgba(0,0,0,0.4)',
-                  backdropFilter: 'blur(10px)',
+                  background: 'rgba(0,0,0,0.5)',
+                  backdropFilter: 'blur(12px)',
                   border: '1px solid rgba(255,255,255,0.15)',
                   display: 'flex',
                   alignItems: 'center',
@@ -536,33 +625,39 @@ export default function HomePage() {
                   cursor: 'pointer',
                   color: 'white',
                   opacity: isHeroHovered ? 1 : 0,
-                  transition: 'all 0.3s ease',
+                  transition: 'all 0.4s ease',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
                 }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255,98,0,0.5)'
-                  e.currentTarget.style.borderColor = 'rgba(255,140,0,0.5)'
+                  e.currentTarget.style.background = 'rgba(255,98,0,0.6)'
+                  e.currentTarget.style.borderColor = 'rgba(255,140,0,0.6)'
+                  e.currentTarget.style.transform = 'translateY(-50%) scale(1.08)'
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(0,0,0,0.4)'
+                  e.currentTarget.style.background = 'rgba(0,0,0,0.5)'
                   e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
+                  e.currentTarget.style.transform = 'translateY(-50%) scale(1)'
                 }}
               >
-                <ChevronRight style={{ width: 24, height: 24 }} />
+                <ChevronRight style={{ width: 26, height: 26 }} />
               </button>
             </>
           )}
 
-          {/* Custom Slide Indicators */}
+          {/* ═══ SLIDE INDICATORS (Right Side) ═══ */}
           {heroMovies.length > 1 && (
-            <div style={{
-              position: 'absolute',
-              bottom: 'clamp(2rem, 5vh, 4rem)',
-              right: 'clamp(2rem, 5vw, 4rem)',
-              zIndex: 20,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.5rem',
-            }}>
+            <div
+              className="hero-indicators"
+              style={{
+                position: 'absolute',
+                bottom: 'clamp(2.5rem, 6vh, 5rem)',
+                right: 'clamp(2rem, 5vw, 4rem)',
+                zIndex: 20,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.6rem',
+              }}
+            >
               {heroMovies.map((movie, idx) => (
                 <button
                   key={movie.id}
@@ -570,73 +665,82 @@ export default function HomePage() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.75rem',
-                    padding: '0.5rem 0.75rem',
+                    gap: '0.85rem',
+                    padding: '0.6rem 0.9rem',
                     background: activeSlide === idx
-                      ? 'linear-gradient(90deg, rgba(255,98,0,0.3), rgba(255,140,0,0.2))'
-                      : 'rgba(0,0,0,0.3)',
-                    backdropFilter: 'blur(10px)',
+                      ? 'linear-gradient(90deg, rgba(255,98,0,0.35), rgba(255,140,0,0.2))'
+                      : 'rgba(0,0,0,0.4)',
+                    backdropFilter: 'blur(12px)',
                     border: activeSlide === idx
-                      ? '1px solid rgba(255,140,0,0.5)'
-                      : '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 8,
+                      ? '1px solid rgba(255,140,0,0.6)'
+                      : '1px solid rgba(255,255,255,0.12)',
+                    borderRadius: 10,
                     cursor: 'pointer',
-                    transition: 'all 0.3s ease',
-                    minWidth: 160,
+                    transition: 'all 0.35s ease',
+                    minWidth: 180,
+                    boxShadow: activeSlide === idx ? '0 4px 20px rgba(255,98,0,0.25)' : 'none',
                   }}
                   onMouseEnter={(e) => {
                     if (activeSlide !== idx) {
-                      e.currentTarget.style.background = 'rgba(255,98,0,0.15)'
-                      e.currentTarget.style.borderColor = 'rgba(255,140,0,0.3)'
+                      e.currentTarget.style.background = 'rgba(255,98,0,0.2)'
+                      e.currentTarget.style.borderColor = 'rgba(255,140,0,0.4)'
                     }
                   }}
                   onMouseLeave={(e) => {
                     if (activeSlide !== idx) {
-                      e.currentTarget.style.background = 'rgba(0,0,0,0.3)'
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                      e.currentTarget.style.background = 'rgba(0,0,0,0.4)'
+                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'
                     }
                   }}
                 >
-                  {/* Progress indicator */}
-                  <div style={{
-                    width: 3,
-                    height: 32,
-                    background: 'rgba(255,255,255,0.15)',
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                    position: 'relative',
-                  }}>
-                    <div style={{
-                      position: 'absolute',
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      height: activeSlide === idx ? '100%' : '0%',
-                      background: 'linear-gradient(to top, #FF6200, #FFB733)',
-                      borderRadius: 2,
-                      transition: activeSlide === idx ? 'height 6s linear' : 'height 0.3s ease',
-                    }} />
+                  {/* Progress bar */}
+                  <div
+                    style={{
+                      width: 4,
+                      height: 36,
+                      background: 'rgba(255,255,255,0.15)',
+                      borderRadius: 3,
+                      overflow: 'hidden',
+                      position: 'relative',
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: activeSlide === idx ? '100%' : '0%',
+                        background: 'linear-gradient(to top, #FF6200, #FFB733)',
+                        borderRadius: 3,
+                        transition: activeSlide === idx ? 'height 6s linear' : 'height 0.4s ease',
+                      }}
+                    />
                   </div>
                   {/* Movie info */}
                   <div style={{ textAlign: 'left', flex: 1, minWidth: 0 }}>
-                    <p style={{
-                      fontSize: '0.72rem',
-                      fontWeight: 700,
-                      color: activeSlide === idx ? '#FFB733' : 'rgba(255,255,255,0.5)',
-                      letterSpacing: '0.1em',
-                      textTransform: 'uppercase',
-                      marginBottom: '0.15rem',
-                    }}>
+                    <p
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        color: activeSlide === idx ? '#FFB733' : 'rgba(255,255,255,0.5)',
+                        letterSpacing: '0.1em',
+                        textTransform: 'uppercase',
+                        marginBottom: '0.2rem',
+                      }}
+                    >
                       {String(idx + 1).padStart(2, '0')}
                     </p>
-                    <p style={{
-                      fontSize: '0.78rem',
-                      fontWeight: 600,
-                      color: activeSlide === idx ? 'white' : 'rgba(255,255,255,0.6)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                    }}>
+                    <p
+                      style={{
+                        fontSize: '0.82rem',
+                        fontWeight: 600,
+                        color: activeSlide === idx ? 'white' : 'rgba(255,255,255,0.65)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
                       {movie.title}
                     </p>
                   </div>
@@ -645,46 +749,107 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Bottom fade gradient */}
-          <div style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 120,
-            background: 'linear-gradient(to top, var(--bg-void), transparent)',
-            zIndex: 8,
-            pointerEvents: 'none',
-          }} />
+          {/* ═══ BOTTOM DOT INDICATORS (Mobile) ═══ */}
+          {heroMovies.length > 1 && (
+            <div
+              className="hero-dots-mobile"
+              style={{
+                position: 'absolute',
+                bottom: 'clamp(1.5rem, 4vh, 3rem)',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                zIndex: 20,
+                display: 'none', // Hidden by default, shown on mobile via CSS
+                gap: '0.5rem',
+              }}
+            >
+              {heroMovies.map((movie, idx) => (
+                <button
+                  key={movie.id}
+                  onClick={() => swiperRef.current?.slideToLoop(idx)}
+                  style={{
+                    width: activeSlide === idx ? 28 : 10,
+                    height: 10,
+                    borderRadius: 5,
+                    background: activeSlide === idx
+                      ? 'linear-gradient(90deg, #FF6200, #FFB733)'
+                      : 'rgba(255,255,255,0.3)',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s ease',
+                    boxShadow: activeSlide === idx ? '0 0 12px rgba(255,98,0,0.5)' : 'none',
+                  }}
+                  aria-label={`Go to slide ${idx + 1}`}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Bottom seamless fade */}
+          <div
+            style={{
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 100,
+              background: 'linear-gradient(to top, var(--bg-void), transparent)',
+              zIndex: 8,
+              pointerEvents: 'none',
+            }}
+          />
         </section>
       ) : (
         /* Fallback hero if no movies */
-        <section style={{
-          height: 'calc(100svh - var(--nav-height))',
-          marginTop: 'var(--nav-height)',
-          minHeight: 500,
-          maxHeight: 800,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'radial-gradient(ellipse at center, rgba(255,98,0,0.12) 0%, var(--bg-void) 60%)',
-          textAlign: 'center',
-          padding: '0 1.5rem',
-        }}>
-          <div>
-            <div style={{
-              fontFamily: 'Bebas Neue, sans-serif',
-              fontSize: 'clamp(3rem, 12vw, 7rem)',
-              letterSpacing: '0.08em',
-              background: 'linear-gradient(90deg, #FF6200, #FFB733)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              lineHeight: 1,
-              marginBottom: '1rem',
-            }}>
+        <section
+          style={{
+            height: 'calc(100svh - var(--nav-height, 66px))',
+            marginTop: 'var(--nav-height, 66px)',
+            minHeight: 500,
+            maxHeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'radial-gradient(ellipse at center, rgba(255,98,0,0.15) 0%, var(--bg-void) 60%)',
+            textAlign: 'center',
+            padding: '0 1.5rem',
+            position: 'relative',
+          }}
+        >
+          {/* Animated background particles */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: `
+                radial-gradient(circle at 20% 30%, rgba(255,98,0,0.08) 0%, transparent 40%),
+                radial-gradient(circle at 80% 70%, rgba(255,183,51,0.06) 0%, transparent 40%)
+              `,
+              pointerEvents: 'none',
+            }}
+          />
+          <div style={{ position: 'relative', zIndex: 1 }}>
+            <div
+              style={{
+                fontFamily: 'Bebas Neue, sans-serif',
+                fontSize: 'clamp(3rem, 12vw, 7rem)',
+                letterSpacing: '0.08em',
+                background: 'linear-gradient(90deg, #FF6200, #FFB733)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                lineHeight: 1,
+                marginBottom: '1rem',
+              }}
+            >
               ROY ENTERTAINMENT
             </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: 'clamp(1rem, 3vw, 1.25rem)', marginBottom: '2rem' }}>
+            <p
+              style={{
+                color: 'var(--text-secondary)',
+                fontSize: 'clamp(1rem, 3vw, 1.25rem)',
+                marginBottom: '2rem',
+              }}
+            >
               Experience Cinema Like Never Before
             </p>
             <Link href="/movies">
@@ -751,19 +916,23 @@ export default function HomePage() {
 
           {/* Empty state */}
           {featured.length === 0 && trending.length === 0 && newReleases.length === 0 && (
-            <div style={{
-              textAlign: 'center',
-              padding: 'clamp(4rem, 10vh, 8rem) 1rem',
-            }}>
-              <div style={{
-                fontFamily: 'Bebas Neue, sans-serif',
-                fontSize: 'clamp(2rem, 6vw, 3.5rem)',
-                letterSpacing: '0.06em',
-                background: 'linear-gradient(90deg, #FF6200, #FFB733)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                marginBottom: '1rem',
-              }}>
+            <div
+              style={{
+                textAlign: 'center',
+                padding: 'clamp(4rem, 10vh, 8rem) 1rem',
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: 'Bebas Neue, sans-serif',
+                  fontSize: 'clamp(2rem, 6vw, 3.5rem)',
+                  letterSpacing: '0.06em',
+                  background: 'linear-gradient(90deg, #FF6200, #FFB733)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  marginBottom: '1rem',
+                }}
+              >
                 Welcome to Roy Entertainment
               </div>
               <p style={{ color: 'var(--text-muted)', fontSize: '1rem', marginBottom: '2rem' }}>
@@ -780,72 +949,121 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════════
           BECOME A CREATOR BANNER
           ═══════════════════════════════════════════ */}
-      <section style={{
-        margin: '0',
-        padding: 'clamp(3rem, 7vh, 5rem) clamp(1rem, 5vw, 3rem)',
-        position: 'relative',
-        overflow: 'hidden',
-        background: 'linear-gradient(135deg, rgba(255,98,0,0.08) 0%, rgba(5,5,7,0) 50%, rgba(255,183,51,0.06) 100%)',
-        borderTop: '1px solid rgba(255,140,0,0.1)',
-      }}>
+      <section
+        style={{
+          margin: '0',
+          padding: 'clamp(3rem, 7vh, 5rem) clamp(1rem, 5vw, 3rem)',
+          position: 'relative',
+          overflow: 'hidden',
+          background: 'linear-gradient(135deg, rgba(255,98,0,0.08) 0%, rgba(5,5,7,0) 50%, rgba(255,183,51,0.06) 100%)',
+          borderTop: '1px solid rgba(255,140,0,0.1)',
+        }}
+      >
         {/* Ambient glow blobs */}
-        <div style={{
-          position: 'absolute', top: '-60%', left: '10%',
-          width: 500, height: 500, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(255,98,0,0.12) 0%, transparent 70%)',
-          filter: 'blur(60px)', pointerEvents: 'none',
-        }} />
-        <div style={{
-          position: 'absolute', bottom: '-40%', right: '5%',
-          width: 400, height: 400, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(255,183,51,0.09) 0%, transparent 70%)',
-          filter: 'blur(60px)', pointerEvents: 'none',
-        }} />
+        <div
+          style={{
+            position: 'absolute',
+            top: '-60%',
+            left: '10%',
+            width: 500,
+            height: 500,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(255,98,0,0.12) 0%, transparent 70%)',
+            filter: 'blur(60px)',
+            pointerEvents: 'none',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '-40%',
+            right: '5%',
+            width: 400,
+            height: 400,
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(255,183,51,0.09) 0%, transparent 70%)',
+            filter: 'blur(60px)',
+            pointerEvents: 'none',
+          }}
+        />
 
-        <div style={{
-          maxWidth: 900, margin: '0 auto',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 'clamp(2rem, 5vw, 4rem)',
-          alignItems: 'center',
-          position: 'relative', zIndex: 1,
-        }}>
+        <div
+          style={{
+            maxWidth: 900,
+            margin: '0 auto',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 'clamp(2rem, 5vw, 4rem)',
+            alignItems: 'center',
+            position: 'relative',
+            zIndex: 1,
+          }}
+        >
           {/* Left — text */}
           <div>
-            <div style={{
-              display: 'inline-flex', alignItems: 'center', gap: '0.45rem',
-              padding: '0.28rem 0.85rem', borderRadius: 9999, marginBottom: '1.25rem',
-              background: 'rgba(255,98,0,0.12)', border: '1px solid rgba(255,140,0,0.25)',
-              fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.18em',
-              textTransform: 'uppercase', color: '#FFB733',
-            }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.45rem',
+                padding: '0.28rem 0.85rem',
+                borderRadius: 9999,
+                marginBottom: '1.25rem',
+                background: 'rgba(255,98,0,0.12)',
+                border: '1px solid rgba(255,140,0,0.25)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                letterSpacing: '0.18em',
+                textTransform: 'uppercase',
+                color: '#FFB733',
+              }}
+            >
               🎬 For Filmmakers
             </div>
 
-            <h2 style={{
-              fontFamily: 'Bebas Neue, sans-serif',
-              fontSize: 'clamp(2.2rem, 5vw, 3.5rem)',
-              letterSpacing: '0.05em', lineHeight: 1.05,
-              marginBottom: '1rem',
-              background: 'linear-gradient(90deg, #ffffff 0%, #FFB733 60%, #FF6200 100%)',
-              WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            }}>
-              Share Your Story<br />With The World
+            <h2
+              style={{
+                fontFamily: 'Bebas Neue, sans-serif',
+                fontSize: 'clamp(2.2rem, 5vw, 3.5rem)',
+                letterSpacing: '0.05em',
+                lineHeight: 1.05,
+                marginBottom: '1rem',
+                background: 'linear-gradient(90deg, #ffffff 0%, #FFB733 60%, #FF6200 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }}
+            >
+              Share Your Story
+              <br />
+              With The World
             </h2>
 
-            <p style={{
-              color: 'var(--text-secondary)', fontSize: 'clamp(0.9rem, 2vw, 1.05rem)',
-              lineHeight: 1.7, marginBottom: '1.75rem', maxWidth: 420,
-            }}>
-              Upload your films, build an audience, and track performance — all from your personal Creator Studio on Roy Entertainment.
+            <p
+              style={{
+                color: 'var(--text-secondary)',
+                fontSize: 'clamp(0.9rem, 2vw, 1.05rem)',
+                lineHeight: 1.7,
+                marginBottom: '1.75rem',
+                maxWidth: 420,
+              }}
+            >
+              Upload your films, build an audience, and track performance — all from your personal
+              Creator Studio on Roy Entertainment.
             </p>
 
             <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
               <Link href="/creator">
-                <button className="btn-fire" style={{
-                  padding: '0.85rem 2rem', fontSize: '0.95rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', gap: '0.5rem',
-                }}>
+                <button
+                  className="btn-fire"
+                  style={{
+                    padding: '0.85rem 2rem',
+                    fontSize: '0.95rem',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                  }}
+                >
                   🎬 Open Creator Studio
                 </button>
               </Link>
@@ -864,19 +1082,39 @@ export default function HomePage() {
               { icon: '📊', title: 'Track Analytics', desc: 'See views, ratings and audience engagement in real-time' },
               { icon: '✅', title: 'Get Featured', desc: 'Top content gets promoted across the platform by our team' },
             ].map(({ icon, title, desc }) => (
-              <div key={title} style={{
-                display: 'flex', alignItems: 'flex-start', gap: '1rem',
-                padding: '0.9rem 1.1rem', borderRadius: 14,
-                background: 'rgba(255,255,255,0.03)',
-                border: '1px solid rgba(255,140,0,0.1)',
-                transition: 'border-color 0.2s, background 0.2s',
-              }}
-                onMouseOver={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,140,0,0.28)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,98,0,0.07)' }}
-                onMouseOut={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,140,0,0.1)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)' }}
+              <div
+                key={title}
+                style={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '1rem',
+                  padding: '0.9rem 1.1rem',
+                  borderRadius: 14,
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,140,0,0.1)',
+                  transition: 'border-color 0.2s, background 0.2s',
+                }}
+                onMouseOver={(e) => {
+                  ;(e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,140,0,0.28)'
+                  ;(e.currentTarget as HTMLElement).style.background = 'rgba(255,98,0,0.07)'
+                }}
+                onMouseOut={(e) => {
+                  ;(e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,140,0,0.1)'
+                  ;(e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)'
+                }}
               >
                 <span style={{ fontSize: '1.4rem', lineHeight: 1, marginTop: 2 }}>{icon}</span>
                 <div>
-                  <p style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.2rem' }}>{title}</p>
+                  <p
+                    style={{
+                      fontWeight: 700,
+                      fontSize: '0.9rem',
+                      color: 'var(--text-primary)',
+                      marginBottom: '0.2rem',
+                    }}
+                  >
+                    {title}
+                  </p>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{desc}</p>
                 </div>
               </div>
@@ -888,42 +1126,62 @@ export default function HomePage() {
       <Footer />
       <AIChatbot />
 
-      {/* Additional styles for hero animations */}
+      {/* ═══ HERO RESPONSIVE STYLES ═══ */}
       <style jsx global>{`
-        @keyframes kenBurns {
-          0% { transform: scale(1) translate(0, 0); }
-          100% { transform: scale(1.1) translate(-1%, -1%); }
+        /* Hide side indicators on smaller screens, show mobile dots */
+        @media (max-width: 900px) {
+          .hero-indicators {
+            display: none !important;
+          }
+          .hero-dots-mobile {
+            display: flex !important;
+          }
         }
-        
-        .hero-section .swiper-slide-active .hero-backdrop {
-          animation: kenBurns 8s ease-out forwards;
+
+        /* Adjust navigation arrows on mobile */
+        @media (max-width: 768px) {
+          .hero-nav-prev,
+          .hero-nav-next {
+            width: 44px !important;
+            height: 44px !important;
+          }
+          .hero-nav-prev svg,
+          .hero-nav-next svg {
+            width: 22px !important;
+            height: 22px !important;
+          }
         }
-        
+
+        /* Extra small screens */
+        @media (max-width: 480px) {
+          .hero-nav-prev,
+          .hero-nav-next {
+            width: 38px !important;
+            height: 38px !important;
+            opacity: 0.8 !important;
+          }
+          .hero-nav-prev {
+            left: 0.5rem !important;
+          }
+          .hero-nav-next {
+            right: 0.5rem !important;
+          }
+        }
+
+        /* Disabled navigation state */
         .hero-nav-prev:disabled,
         .hero-nav-next:disabled {
           opacity: 0.3 !important;
           cursor: not-allowed;
         }
-        
-        @media (max-width: 768px) {
-          .hero-nav-prev,
-          .hero-nav-next {
-            width: 40px !important;
-            height: 40px !important;
-          }
-          
-          .hero-nav-prev svg,
-          .hero-nav-next svg {
-            width: 20px !important;
-            height: 20px !important;
-          }
+
+        /* Swiper overrides for this hero */
+        .hero-section .swiper {
+          width: 100%;
+          height: 100%;
         }
-        
-        @media (max-width: 900px) {
-          /* Hide side indicators on smaller screens, show bottom dots */
-          .hero-section > div:last-of-type:not(.swiper) {
-            display: none !important;
-          }
+        .hero-section .swiper-slide {
+          overflow: hidden;
         }
       `}</style>
     </main>
@@ -972,10 +1230,7 @@ function ContinueWatchingSection({ items }: { items: ContinueWatchingItem[] }) {
                 />
                 {/* Progress bar */}
                 <div className="movie-card-progress">
-                  <div
-                    className="movie-card-progress-bar"
-                    style={{ width: `${progress_percent}%` }}
-                  />
+                  <div className="movie-card-progress-bar" style={{ width: `${progress_percent}%` }} />
                 </div>
                 {/* Play overlay */}
                 <div
@@ -991,16 +1246,18 @@ function ContinueWatchingSection({ items }: { items: ContinueWatchingItem[] }) {
                     transition: 'opacity 0.3s',
                   }}
                 >
-                  <div style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: '0 0 40px rgba(255,98,0,0.6)',
-                  }}>
+                  <div
+                    style={{
+                      width: 56,
+                      height: 56,
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 0 40px rgba(255,98,0,0.6)',
+                    }}
+                  >
                     <Play style={{ width: 24, height: 24, fill: 'white', color: 'white', marginLeft: 3 }} />
                   </div>
                 </div>
