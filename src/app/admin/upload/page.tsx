@@ -79,7 +79,17 @@ export default function AdminUploadPage() {
 
   const uploadFile = async (file: File, bucket: string, path: string): Promise<string | null> => {
     const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
-    if (error) { console.error('Upload error:', error); return null }
+    if (error) {
+      console.error('Storage upload error:', error)
+      const msg = (error as any)?.message ?? JSON.stringify(error)
+      if (msg.includes('row-level') || msg.includes('policy') || msg.includes('403')) {
+        throw new Error('Storage permission denied. Go to Supabase → Storage → Policies and allow uploads for the movies bucket.')
+      }
+      if (msg.includes('Bucket not found') || msg.includes('404')) {
+        throw new Error(`Bucket "${bucket}" not found. Create it in Supabase → Storage.`)
+      }
+      throw new Error(`Upload failed: ${msg}`)
+    }
     const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path)
     return publicUrl
   }

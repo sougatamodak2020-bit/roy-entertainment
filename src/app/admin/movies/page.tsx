@@ -36,11 +36,14 @@ interface Movie {
   rating: number | null
   admin_rating: number | null
   view_count: number
+  views: number | null
   is_featured: boolean
   is_trending: boolean
   is_published: boolean
   uploaded_by: string | null
+  uploaded_by_type: string | null
   created_at: string
+  updated_at: string | null
 }
 
 interface ActorEntry { name: string; character: string; imageFile: File | null; imagePreview: string | null }
@@ -58,14 +61,12 @@ interface EditForm {
   duration_minutes: string
   language: string
   director: string
-  genre: string         // comma-separated for quick text, pills toggle it
+  genre: string
   admin_rating: string
   is_published: boolean
   is_featured: boolean
   is_trending: boolean
-  // actor entries (replaces old comma-separated actors string)
   actorEntries: ActorEntry[]
-  // new image files (if user uploads replacements)
   newPosterFile: File | null
   newPosterPreview: string | null
   newBackdropFile: File | null
@@ -208,7 +209,17 @@ export default function AdminMoviesPage() {
 
   const uploadFile = async (file: File, bucket: string, path: string): Promise<string | null> => {
     const { error } = await supabase.storage.from(bucket).upload(path, file, { upsert: true })
-    if (error) { console.error(error); return null }
+    if (error) {
+      console.error('Storage upload error:', error)
+      const msg = (error as any)?.message ?? JSON.stringify(error)
+      if (msg.includes('row-level') || msg.includes('policy') || msg.includes('403')) {
+        throw new Error('Storage permission denied. Go to Supabase → Storage → Policies and allow uploads for the movies bucket.')
+      }
+      if (msg.includes('Bucket not found') || msg.includes('404')) {
+        throw new Error(`Bucket "${bucket}" not found. Create it in Supabase → Storage.`)
+      }
+      throw new Error(`Upload failed: ${msg}`)
+    }
     const { data: { publicUrl } } = supabase.storage.from(bucket).getPublicUrl(path)
     return publicUrl
   }
@@ -252,21 +263,21 @@ export default function AdminMoviesPage() {
     try {
       const prefix = `admin/${editingMovie.id}`
 
-      // Upload replacement images if provided
       let posterUrl  = editForm.poster_url.trim()  || null
       let backdropUrl = editForm.backdrop_url.trim() || null
 
+      const ts = Date.now()
       if (editForm.newPosterFile) {
         const ext = editForm.newPosterFile.name.split('.').pop()
-        posterUrl = await uploadFile(editForm.newPosterFile, 'movies', `${prefix}/poster.${ext}`) || posterUrl
+        posterUrl = await uploadFile(editForm.newPosterFile, 'movies', `${prefix}/poster_${ts}.${ext}`) || posterUrl
       }
       if (editForm.newBackdropFile) {
         const ext = editForm.newBackdropFile.name.split('.').pop()
-        backdropUrl = await uploadFile(editForm.newBackdropFile, 'movies', `${prefix}/backdrop.${ext}`) || backdropUrl
+        backdropUrl = await uploadFile(editForm.newBackdropFile, 'movies', `${prefix}/backdrop_${ts}.${ext}`) || backdropUrl
       }
       if (editForm.newThumbFile) {
         const ext = editForm.newThumbFile.name.split('.').pop()
-        const thumbUrl = await uploadFile(editForm.newThumbFile, 'movies', `${prefix}/thumbnail.${ext}`)
+        const thumbUrl = await uploadFile(editForm.newThumbFile, 'movies', `${prefix}/thumbnail_${ts}.${ext}`)
         if (thumbUrl && !editForm.newPosterFile) posterUrl = thumbUrl
       }
 
@@ -297,7 +308,6 @@ export default function AdminMoviesPage() {
       const { error } = await supabase.from('movies').update(payload).eq('id', editingMovie.id)
       if (error) throw error
 
-      // Upsert actors + movie_actors
       for (let i = 0; i < editForm.actorEntries.length; i++) {
         const a = editForm.actorEntries[i]
         if (!a.name.trim()) continue
@@ -561,7 +571,7 @@ export default function AdminMoviesPage() {
                 {/* Poster */}
                 <div style={{ width: 52, height: 70, borderRadius: 8, overflow: 'hidden', background: 'rgba(255,255,255,0.05)', flexShrink: 0 }}>
                   {movie.poster_url
-                    ? <Image src={movie.poster_url} alt={movie.title} width={52} height={70} style={{ width: '100%', height: '100%', objectFit: 'cover' }} unoptimized />
+                    ? <img src={movie.poster_url + '?t=' + (movie.updated_at ? new Date(movie.updated_at).getTime() : '')} alt={movie.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Film style={{ width: 18, height: 18, color: 'rgba(255,255,255,0.15)' }} /></div>
                   }
                 </div>
@@ -1018,7 +1028,7 @@ const editInputStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8,
   padding: '0.55rem 0.75rem', color: 'white', fontSize: '0.82rem',
   outline: 'none', fontFamily: 'Outfit,sans-serif',
-  transition: 'border-color 0.2s', boxSizing: 'border-box' as 'border-box',
+  transition: 'border-color 0.2s', boxSizing: 'border-box' as const,
 }
 
 const inputStyle: React.CSSProperties = {
@@ -1026,7 +1036,7 @@ const inputStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10,
   padding: '0.7rem 0.9rem', color: 'white', fontSize: '0.87rem',
   outline: 'none', fontFamily: 'Outfit,sans-serif',
-  transition: 'border-color 0.2s', boxSizing: 'border-box',
+  transition: 'border-color 0.2s', boxSizing: 'border-box' as const,
 }
 
 const actionBtn: React.CSSProperties = {
