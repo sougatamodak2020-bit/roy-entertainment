@@ -45,6 +45,9 @@
   --card-info-bg:   #1A1208;
   --scrollbar-bg:   #0C0A07;
 
+  --nav-height:     66px;
+  --nav-height-mobile: 56px;
+
   --success: #22C55E;
   --warning: #F59E0B;
   --danger:  #EF4444;
@@ -296,6 +299,10 @@ body {
   -webkit-backdrop-filter: blur(24px) saturate(1.6);
   border-bottom: 1px solid var(--glass-border);
   transition: background 0.3s, box-shadow 0.3s, border-color 0.3s;
+  height: var(--nav-height);
+}
+@media (max-width: 768px) {
+  .nav-root { height: var(--nav-height-mobile); }
 }
 .nav-root.scrolled {
   box-shadow: 0 4px 30px rgba(0,0,0,0.32), 0 0 0 1px var(--glass-border);
@@ -306,7 +313,7 @@ body {
 .nav-inner {
   max-width: 1500px; margin: 0 auto;
   padding: 0 clamp(1rem, 4vw, 2.5rem);
-  height: 66px; display: flex; align-items: center;
+  height: 100%; display: flex; align-items: center;
   justify-content: space-between; gap: 1rem;
 }
 .nav-logo { display: flex; align-items: center; gap: 0.6rem; text-decoration: none; flex-shrink: 0; }
@@ -356,18 +363,45 @@ body {
 .search-input::placeholder { color: var(--text-dim); }
 
 /* ================================================================
-   HERO SECTION
+   HERO SECTION - FIXED FOR PROPER IMAGE DISPLAY
    ================================================================ */
 .hero-section {
-  position: relative; width: 100%;
-  height: 100svh; min-height: 600px; max-height: 920px; overflow: hidden;
+  position: relative;
+  width: 100%;
+  height: calc(100svh - var(--nav-height));
+  min-height: 500px;
+  max-height: 850px;
+  overflow: hidden;
+  margin-top: var(--nav-height);
 }
-@media (max-width: 768px) { .hero-section { min-height: 500px; max-height: 720px; } }
+@media (max-width: 768px) {
+  .hero-section {
+    height: calc(100svh - var(--nav-height-mobile));
+    min-height: 450px;
+    max-height: 700px;
+    margin-top: var(--nav-height-mobile);
+  }
+}
+
+/* Hero backdrop image container - ensures full coverage */
+.hero-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.hero-backdrop img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
+}
 
 .hero-content {
   position: absolute; inset: 0;
   display: flex; align-items: flex-end;
-  padding: 0 clamp(1.25rem, 6vw, 5rem) clamp(3.5rem, 8vh, 6.5rem);
+  padding: 0 clamp(1.25rem, 6vw, 5rem) clamp(3rem, 7vh, 5.5rem);
   z-index: 5;
 }
 .hero-text-block { max-width: min(680px, 90vw); animation: heroFadeUp 0.9s cubic-bezier(0.16,1,0.3,1) both; }
@@ -390,7 +424,7 @@ body {
 }
 .hero-title {
   font-family: 'Bebas Neue', sans-serif;
-  font-size: clamp(1.9rem, 4vw, 3.4rem);
+  font-size: clamp(2rem, 5vw, 3.8rem);
   letter-spacing: 0.04em; line-height: 1.02;
   color: var(--text-primary);
   text-shadow: 0 3px 24px rgba(0,0,0,0.55);
@@ -489,6 +523,23 @@ body {
 .movie-card-rating { display: flex; align-items: center; gap: 0.18rem; color: var(--brand-gold); font-weight: 700; }
 .card-badge-group { position: absolute; top: 0.6rem; left: 0.6rem; display: flex; flex-direction: column; gap: 0.3rem; z-index: 2; }
 
+/* Continue Watching Progress Bar */
+.movie-card-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: rgba(0,0,0,0.5);
+  z-index: 3;
+}
+.movie-card-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--brand-core), var(--brand-gold));
+  border-radius: 0 2px 2px 0;
+  transition: width 0.3s ease;
+}
+
 /* ================================================================
    MOVIE GRID
    ================================================================ */
@@ -508,6 +559,23 @@ body {
 @media (min-width: 480px)  { .movie-grid.poster-grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); } }
 @media (min-width: 768px)  { .movie-grid.poster-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); } }
 @media (min-width: 1200px) { .movie-grid.poster-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); } }
+
+/* Horizontal scroll row */
+.movie-scroll-row {
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  padding-bottom: 0.75rem;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.movie-scroll-row::-webkit-scrollbar { height: 4px; }
+.movie-scroll-row::-webkit-scrollbar-track { background: transparent; }
+.movie-scroll-row::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 2px; }
+.movie-scroll-row > * {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+}
 
 /* ================================================================
    PAGE HEADERS
@@ -593,21 +661,35 @@ body {
 .footer-bottom { border-top: 1px solid var(--glass-border); padding-top: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; font-size: 0.8rem; color: var(--text-dim); }
 
 /* ================================================================
-   WATCH PAGE
+   WATCH PAGE - FIXED NAVBAR SPACING
    ================================================================ */
+
+/* Watch page wrapper - accounts for fixed navbar */
+.watch-page {
+  min-height: 100vh;
+  background: var(--bg-void);
+  color: var(--text-primary);
+  padding-top: var(--nav-height);
+}
+@media (max-width: 768px) {
+  .watch-page {
+    padding-top: var(--nav-height-mobile);
+  }
+}
 
 /* Full-bleed cinematic player section */
 .watch-player-section {
   width: 100%;
   background: #000;
   position: relative;
-  padding: 0;
+  padding: clamp(1rem, 2.5vh, 2rem) 0 0;
 }
 .watch-player-inner {
-  max-width: 100%;
+  max-width: 1000px;
   margin: 0 auto;
+  padding: 0 clamp(1rem, 4vw, 2rem);
   position: relative;
-  line-height: 0; /* removes inline gap */
+  line-height: 0;
 }
 .video-wrapper {
   width: 100%;
@@ -615,8 +697,8 @@ body {
   position: relative;
   overflow: hidden;
   background: #000;
-  border-bottom: 1px solid rgba(255,140,0,0.12);
-  box-shadow: 0 8px 60px rgba(0,0,0,0.8);
+  border-radius: 16px;
+  box-shadow: 0 8px 60px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,140,0,0.15);
 }
 
 /* Watch page content area below player */
@@ -682,12 +764,12 @@ body {
    MOBILE RESPONSIVE
    ================================================================ */
 @media (max-width: 768px) {
-  .hero-title    { font-size: clamp(1.5rem, 7vw, 2.2rem); line-height: 1.02; }
-  .hero-content  { padding: 0 1.2rem 2.8rem; }
+  .hero-title    { font-size: clamp(1.6rem, 7vw, 2.4rem); line-height: 1.02; }
+  .hero-content  { padding: 0 1.2rem 2.5rem; }
   .hero-desc     { -webkit-line-clamp: 2; font-size: 0.84rem; }
   .hero-meta     { font-size: 0.78rem; gap: 0.45rem; }
   .btn-fire, .btn-ghost { padding: 0.72rem 1.4rem; font-size: 0.875rem; }
-  .nav-inner     { height: 56px; padding: 0 1rem; }
+  .nav-inner     { height: 100%; padding: 0 1rem; }
   .nav-logo-text { font-size: 1.2rem; }
   .section-title { font-size: 1.05rem; }
   .content-area  { padding-top: 0; }
