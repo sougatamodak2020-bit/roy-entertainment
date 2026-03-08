@@ -1,227 +1,218 @@
 // src/app/api/chat/route.ts
-// Place at: src/app/api/chat/route.ts
-// Add GEMINI_API_KEY to your .env.local file
+// Roy AI Chat — Groq (FREE, ultra-fast) with Gemini fallback
+// POST /api/chat  { messages: [{role, content}] }
+//
+// Setup:
+//   1. Get FREE Groq key → https://console.groq.com  (no billing needed)
+//   2. Add to .env.local:  GROQ_API_KEY=gsk_...
+//   3. Gemini still used as fallback if you have GEMINI_API_KEY set
 
-import { NextRequest, NextResponse } from 'next/server'
-import { createSupabaseServerClient } from '@/lib/supabase-server' // optional: for pulling real movie data
+import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent'
-
-/* ── Rate limiting (in-memory, per IP, resets on server restart) ── */
-const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
-const RATE_LIMIT    = 20   // requests
-const RATE_WINDOW   = 60_000 // 1 minute in ms
-
-function checkRateLimit(ip: string): boolean {
-  const now  = Date.now()
-  const data = rateLimitMap.get(ip)
-  if (!data || now > data.resetAt) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW })
-    return true
-  }
-  if (data.count >= RATE_LIMIT) return false
-  data.count++
-  return true
-}
-
-/* ── Fetch real movies from Supabase to give AI context ── */
-async function getMovieContext(): Promise<string> {
-  try {
-    // Dynamically import to avoid crashing if supabase-server isn't configured
-    const { createClient } = await import('@supabase/supabase-js')
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
-
-    const { data: movies } = await supabase
-      .from('movies')
-      .select('title, genre, language, release_year, description, admin_rating, is_featured, is_trending, director')
-      .eq('is_published', true)
-      .order('view_count', { ascending: false })
-      .limit(40)
-
-    const { data: series } = await supabase
-      .from('series')
-      .select('title, genre, language, release_year, description, admin_rating, is_featured, is_trending')
-      .eq('is_published', true)
-      .order('view_count', { ascending: false })
-      .limit(20)
-
-    if (!movies?.length && !series?.length) return ''
-
-    const movieList = movies?.map(m =>
-      `- "${m.title}" (${m.release_year || 'N/A'}) | ${(m.genre || []).join(', ')} | ${m.language} | Rating: ${m.admin_rating || 'N/A'} | Director: ${m.director || 'N/A'}${m.is_featured ? ' | FEATURED' : ''}${m.is_trending ? ' | TRENDING' : ''}`
-    ).join('\n') || 'None'
-
-    const seriesList = series?.map(s =>
-      `- "${s.title}" (${s.release_year || 'N/A'}) | ${(s.genre || []).join(', ')} | ${s.language} | Rating: ${s.admin_rating || 'N/A'}${s.is_featured ? ' | FEATURED' : ''}${s.is_trending ? ' | TRENDING' : ''}`
-    ).join('\n') || 'None'
-
-    return `\n\n=== AVAILABLE CONTENT ON ROY ENTERTAINMENT ===\nMOVIES:\n${movieList}\n\nSERIES:\n${seriesList}\n=== END OF CATALOG ===`
-  } catch {
-    return ''
-  }
-}
-
-/* ── System prompt ── */
-function buildSystemPrompt(catalog: string): string {
-  return `You are "Roy AI", a friendly and knowledgeable movie guide for Roy Entertainment — a premium streaming platform specializing in Indian and international cinema.
-
-YOUR PERSONALITY:
-- Warm, enthusiastic, and cinephile-passionate
-- Concise but thorough — never ramble
-- Use emojis naturally but sparingly (1-2 max per reply)
-- Never mention competitors (Netflix, Amazon, etc.)
-- Always recommend content from the Roy Entertainment catalog when relevant
-
-YOUR CAPABILITIES:
-1. Recommend movies/series from the catalog based on mood, genre, language, actor, director
-2. Provide movie info: plot summaries, genres, ratings, cast
-3. Help users decide what to watch ("what mood are you in?")
-4. Discuss cinema broadly — history, trivia, awards
-5. Guide users to features: watchlist, search, genres, new releases
-6. Answer questions about Bollywood, Hollywood, South Indian cinema
-
-RESPONSE RULES:
-- If recommending, pick from the catalog below (if available), else suggest popular titles and note they may not be on the platform yet
-- Keep recommendations to 2-4 items max unless asked for more
-- For plot questions, give a brief spoiler-free 2-sentence summary
-- If asked something outside movies/entertainment, gently redirect: "I'm best at movie stuff! But I can help you with..."
-- Format lists cleanly — use line breaks, not markdown headers
-- Do NOT make up movies that aren't in the catalog as being "on the platform"${catalog}`
-}
-
-/* ── POST /api/chat ── */
-export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown'
-
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: 'Too many requests. Please wait a moment.' },
-      { status: 429 }
-    )
-  }
-
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: 'AI service not configured. Add GEMINI_API_KEY to .env.local' },
-      { status: 503 }
-    )
-  }
-
-  let body: { messages: { role: string; content: string }[]; context?: string }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
-  }
-
-  const { messages } = body
-  if (!messages?.length) {
-    return NextResponse.json({ error: 'No messages provided' }, { status: 400 })
-  }
-
-  // Validate message format
-  const validMessages = messages.filter(m =>
-    (m.role === 'user' || m.role === 'assistant') &&
-    typeof m.content === 'string' &&
-    m.content.trim().length > 0
+// Direct client — no next/headers dependency in API routes
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
-  if (!validMessages.length) {
-    return NextResponse.json({ error: 'No valid messages' }, { status: 400 })
-  }
+}
 
-  // Limit conversation history to last 20 messages (prevent token abuse)
-  const trimmedMessages = validMessages.slice(-20)
+const SYSTEM_PROMPT = `You are Roy AI 🎬, a movie guide chatbot for Roy Entertainment — a Bengali and Indian streaming platform.
+- When greeted (hi/hello/hey), introduce yourself and ask what they want to watch
+- Keep replies SHORT (2-4 sentences max)
+- Be warm and conversational
+- Use 1 emoji max per message
+- NEVER say "Not much" or respond to greetings as "how are you" questions
+- NEVER mention Netflix, Prime Video, Hotstar or any competitor
+- Only recommend movies from the catalog provided
+- If asked something unrelated to movies, gently redirect back to movies`
 
-  // Fetch movie catalog for context
-  const catalog      = await getMovieContext()
-  const systemPrompt = buildSystemPrompt(catalog)
-
-  // Build Gemini request — convert to Gemini's format
-  // Gemini uses "user"/"model" roles (not "assistant")
-  const geminiContents = trimmedMessages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }))
-
-  const geminiBody = {
-    system_instruction: {
-      parts: [{ text: systemPrompt }],
-    },
-    contents: geminiContents,
-    generationConfig: {
-      temperature:     0.8,
-      topK:            40,
-      topP:            0.95,
-      maxOutputTokens: 600,
-      stopSequences:   [],
-    },
-    safetySettings: [
-      { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
-    ],
-  }
-
+async function getMovieCatalog(): Promise<string> {
   try {
-    const geminiRes = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(geminiBody),
+    const supabase = getSupabase()
+    const { data } = await supabase
+      .from("movies")
+      .select("title, genre, language, release_year, rating")
+      .eq("is_published", true)
+      .order("rating", { ascending: false })
+      .limit(15)
+    if (!data?.length) return "No movies available yet — platform is growing!"
+    return data
+      .map(m => `- ${m.title} (${m.release_year ?? "?"}) | ${(m.genre ?? []).join(", ")} | ${m.language ?? "?"}`)
+      .join("\n")
+  } catch {
+    return ""
+  }
+}
+
+// ── Groq API call (free, uses Llama 3) ──────────────────────────────────────
+async function callGroq(
+  apiKey: string,
+  messages: { role: string; content: string }[],
+  systemWithCatalog: string
+): Promise<string | null> {
+  try {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model:       "llama-3.1-8b-instant",  // Free, very fast
+        max_tokens:  300,
+        temperature: 0.7,
+        messages: [
+          { role: "system", content: systemWithCatalog },
+          ...messages.map(m => ({ role: m.role, content: m.content })),
+        ],
+      }),
     })
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text()
-      console.error('Gemini API error:', geminiRes.status, errText)
-
-      if (geminiRes.status === 400) {
-        return NextResponse.json({ error: 'Invalid request to AI service.' }, { status: 400 })
-      }
-      if (geminiRes.status === 403) {
-        return NextResponse.json({ error: 'AI API key invalid or quota exceeded.' }, { status: 503 })
-      }
-      if (geminiRes.status === 429) {
-        return NextResponse.json({ error: 'AI service is busy. Try again in a moment.' }, { status: 429 })
-      }
-      return NextResponse.json({ error: 'AI service unavailable.' }, { status: 502 })
+    if (!res.ok) {
+      const err = await res.text()
+      console.warn(`[Chat] Groq ${res.status}:`, err)
+      return null
     }
 
-    const geminiData = await geminiRes.json()
+    const data = await res.json()
+    return data?.choices?.[0]?.message?.content?.trim() ?? null
+  } catch (err) {
+    console.warn("[Chat] Groq failed:", err)
+    return null
+  }
+}
 
-    // Extract text from Gemini response
-    const candidate = geminiData.candidates?.[0]
-    if (!candidate) {
-      return NextResponse.json({ error: 'No response from AI.' }, { status: 502 })
+// ── Gemini fallback ──────────────────────────────────────────────────────────
+async function callGemini(
+  apiKey: string,
+  prompt: string
+): Promise<string | null> {
+  try {
+    const models = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.0-pro"]
+
+    for (const model of models) {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 300 },
+          }),
+        }
+      )
+
+      if (res.status === 404 || res.status === 429) {
+        console.warn(`[Chat] Gemini ${model} → ${res.status}, trying next...`)
+        continue
+      }
+
+      if (!res.ok) {
+        console.warn(`[Chat] Gemini ${model} error ${res.status}`)
+        continue
+      }
+
+      const data = await res.json()
+      const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
+      if (reply) return reply.replace(/^Roy AI:\s*/i, "").trim()
     }
 
-    // Check for safety blocks
-    if (candidate.finishReason === 'SAFETY') {
+    return null
+  } catch (err) {
+    console.warn("[Chat] Gemini failed:", err)
+    return null
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json()
+    const messages: { role: string; content: string }[] = body.messages ?? []
+
+    if (!messages.length) {
+      return NextResponse.json({ reply: "Send me a message! 🎬" })
+    }
+
+    const groqKey   = process.env.GROQ_API_KEY
+    const geminiKey = process.env.GEMINI_API_KEY
+
+    if (!groqKey && !geminiKey) {
       return NextResponse.json({
-        reply: "I can't respond to that, but I'm happy to help you find a great movie to watch! 🎬"
+        reply: "Roy AI needs a GROQ_API_KEY in .env.local — get one free at console.groq.com 🔧"
       })
     }
 
-    const text = candidate.content?.parts?.[0]?.text
-    if (!text) {
-      return NextResponse.json({ error: 'Empty response from AI.' }, { status: 502 })
+    const catalog           = await getMovieCatalog()
+    const systemWithCatalog = `${SYSTEM_PROMPT}\n\nRoy Entertainment Movie Catalog:\n${catalog}`
+
+    // ── 1. Try Groq first (free + fast) ─────────────────────────────────────
+    if (groqKey) {
+      const reply = await callGroq(groqKey, messages, systemWithCatalog)
+      if (reply) return NextResponse.json({ reply, provider: "groq" })
     }
 
-    return NextResponse.json({ reply: text.trim() })
-  } catch (err) {
-    console.error('Chat API error:', err)
-    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 })
+    // ── 2. Fallback to Gemini ────────────────────────────────────────────────
+    if (geminiKey) {
+      const history = messages
+        .map(m => `${m.role === "user" ? "User" : "Roy AI"}: ${m.content}`)
+        .join("\n")
+      const lastMsg = messages.filter(m => m.role === "user").pop()?.content ?? ""
+      const prompt  = `${systemWithCatalog}\n\nConversation:\n${history}\n\nReply to: "${lastMsg}"\nRoy AI:`
+
+      const reply = await callGemini(geminiKey, prompt)
+      if (reply) return NextResponse.json({ reply, provider: "gemini" })
+    }
+
+    // ── Both failed ──────────────────────────────────────────────────────────
+    return NextResponse.json({
+      reply: "I'm taking a short break 😅 Please try again in a minute!"
+    })
+
+  } catch (error: any) {
+    console.error("[Chat API] Crash:", error?.message ?? error)
+    return NextResponse.json({ reply: "Something went wrong. Please try again! 🙏" })
   }
 }
 
-/* ── GET — health check ── */
+// ── GET /api/chat — health check ─────────────────────────────────────────────
 export async function GET() {
-  return NextResponse.json({
-    status:    'ok',
-    model:     'gemini-2.0-flash',
-    configured: !!process.env.GEMINI_API_KEY,
-  })
+  const groqKey   = process.env.GROQ_API_KEY
+  const geminiKey = process.env.GEMINI_API_KEY
+  const results: Record<string, string> = {}
+
+  if (groqKey) {
+    try {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant", max_tokens: 5,
+          messages: [{ role: "user", content: "say ok" }],
+        }),
+      })
+      results["groq"] = res.ok ? "✅ working" : `❌ ${res.status}`
+    } catch { results["groq"] = "❌ failed" }
+  } else {
+    results["groq"] = "⚠️ GROQ_API_KEY not set"
+  }
+
+  if (geminiKey) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
+        {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "say ok" }] }], generationConfig: { maxOutputTokens: 5 } }),
+        }
+      )
+      results["gemini"] = res.ok ? "✅ working" : `❌ ${res.status}`
+    } catch { results["gemini"] = "❌ failed" }
+  } else {
+    results["gemini"] = "⚠️ GEMINI_API_KEY not set (optional fallback)"
+  }
+
+  return NextResponse.json({ providers: results })
 }

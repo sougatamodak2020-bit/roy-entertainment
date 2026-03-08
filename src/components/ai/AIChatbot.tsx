@@ -1,427 +1,253 @@
 // src/components/ai/AIChatbot.tsx
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
-import {
-  MessageCircle, X, Send, Loader2, Sparkles, Film,
-  Minimize2, RefreshCw, AlertCircle, ChevronDown,
-} from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { MessageCircle, X, Send, Loader2, Sparkles, Film, Minimize2 } from 'lucide-react'
 
-/* ── Types ── */
 interface Message {
-  id:      string
-  role:    'user' | 'assistant' | 'error'
+  role: 'user' | 'assistant'
   content: string
-  ts:      number
 }
 
-interface ChatState {
-  status: 'idle' | 'loading' | 'error'
-  error:  string | null
-}
-
-/* ── Suggestion chips — cycle through these ── */
-const SUGGESTION_SETS = [
-  ['Recommend a thriller', 'Best action movies', 'Top rated films', 'New releases'],
-  ['Hindi movies', 'Best Tamil films', 'Romantic comedies', 'Award winners'],
-  ['Movies like Inception', 'Best directors', 'Classic films', 'Underrated gems'],
-]
-
-/* ── Unique ID helper ── */
-const uid = () => Math.random().toString(36).slice(2, 9)
-
-/* ── Greeting messages — random each session ── */
-const GREETINGS = [
-  "Hi! I'm Roy AI 🎬 Your personal movie guide. Ask me for recommendations, plot summaries, or what's trending!",
-  "Hey there! Ready to find your next favourite film? 🍿 I know everything on Roy Entertainment — just ask!",
-  "Welcome! I'm Roy AI. Tell me your mood and I'll find the perfect movie for you 🎭",
+const SUGGESTIONS = [
+  'Recommend a thriller',
+  'Best action movies',
+  'Top rated films',
+  'New releases',
 ]
 
 export function AIChatbot() {
-  const [open,       setOpen]       = useState(false)
-  const [messages,   setMessages]   = useState<Message[]>([])
-  const [input,      setInput]      = useState('')
-  const [chatState,  setChatState]  = useState<ChatState>({ status: 'idle', error: null })
-  const [unread,     setUnread]     = useState(false)
-  const [sugSet,     setSugSet]     = useState(0)
-  const [isTyping,   setIsTyping]   = useState(false)
-  const [inputRows,  setInputRows]  = useState(1)
-
+  const [open,     setOpen]     = useState(false)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input,    setInput]    = useState('')
+  const [loading,  setLoading]  = useState(false)
+  const [unread,   setUnread]   = useState(false)
   const bottomRef  = useRef<HTMLDivElement>(null)
-  const inputRef   = useRef<HTMLTextAreaElement>(null)
-  const abortRef   = useRef<AbortController | null>(null)
+  const inputRef   = useRef<HTMLInputElement>(null)
 
-  /* ── Init greeting on first open ── */
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 150)
       setUnread(false)
       if (messages.length === 0) {
-        const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
         setMessages([{
-          id:      uid(),
-          role:    'assistant',
-          content: greeting,
-          ts:      Date.now(),
+          role: 'assistant',
+          content: "Hi! I'm your Roy Entertainment guide 🎬 Ask me anything — movie recommendations, what's trending, or what to watch next.",
         }])
       }
     }
-  }, [open]) // eslint-disable-line
+  }, [open])
 
-  /* ── Auto-scroll to bottom ── */
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, chatState.status])
+  }, [messages])
 
-  /* ── Auto-resize textarea ── */
-  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value)
-    const lines = e.target.value.split('\n').length
-    const approxRows = Math.min(4, Math.max(1, lines))
-    setInputRows(approxRows)
-  }
-
-  /* ── Send message ── */
-  const send = useCallback(async (text?: string) => {
+  const send = async (text?: string) => {
     const q = (text ?? input).trim()
-    if (!q || chatState.status === 'loading') return
-
+    if (!q || loading) return
     setInput('')
-    setInputRows(1)
-    setChatState({ status: 'loading', error: null })
 
-    const userMsg: Message = { id: uid(), role: 'user', content: q, ts: Date.now() }
-    const nextMessages = [...messages, userMsg]
-    setMessages(nextMessages)
-
-    // Cancel any previous in-flight request
-    abortRef.current?.abort()
-    abortRef.current = new AbortController()
-
-    // Simulate typing indicator briefly
-    setIsTyping(true)
+    const updated: Message[] = [...messages, { role: 'user', content: q }]
+    setMessages(updated)
+    setLoading(true)
 
     try {
       const res = await fetch('/api/chat', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal:  abortRef.current.signal,
         body: JSON.stringify({
-          messages: nextMessages
-            .filter(m => m.role !== 'error')
-            .map(m => ({ role: m.role, content: m.content })),
+          messages: updated.map(m => ({ role: m.role, content: m.content })),
         }),
       })
 
       const data = await res.json()
-      setIsTyping(false)
-
-      if (!res.ok) {
-        const errMsg = data.error || `Server error (${res.status})`
-        setMessages(prev => [...prev, {
-          id:      uid(),
-          role:    'error',
-          content: errMsg,
-          ts:      Date.now(),
-        }])
-        setChatState({ status: 'error', error: errMsg })
-        return
-      }
-
-      const reply = data.reply || "I didn't catch that — could you rephrase?"
-      const assistantMsg: Message = { id: uid(), role: 'assistant', content: reply, ts: Date.now() }
-      setMessages(prev => [...prev, assistantMsg])
-      setChatState({ status: 'idle', error: null })
-
-      // If panel is closed, mark unread
+      // /api/chat always returns 200 with a reply field (graceful errors included)
+      const reply = data.reply ?? "Sorry, I couldn't get a response. Try again!"
+      setMessages(prev => [...prev, { role: 'assistant', content: reply }])
       if (!open) setUnread(true)
+    } catch {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: "Oops, something went wrong. Please try again in a moment.",
+      }])
 
-      // Rotate suggestion set
-      setSugSet(s => (s + 1) % SUGGESTION_SETS.length)
-
-    } catch (err: any) {
-      setIsTyping(false)
-      if (err.name === 'AbortError') {
-        setChatState({ status: 'idle', error: null })
-        return
-      }
-      const errMsg = 'Connection error. Check your internet and try again.'
-      setMessages(prev => [...prev, { id: uid(), role: 'error', content: errMsg, ts: Date.now() }])
-      setChatState({ status: 'error', error: errMsg })
-    }
-  }, [input, messages, chatState.status, open])
-
-  /* ── Retry last failed message ── */
-  const retry = () => {
-    const lastUser = [...messages].reverse().find(m => m.role === 'user')
-    if (!lastUser) return
-    // Remove error messages at the end
-    setMessages(prev => {
-      const cleaned = [...prev]
-      while (cleaned.length && cleaned[cleaned.length - 1].role === 'error') {
-        cleaned.pop()
-      }
-      return cleaned
-    })
-    setChatState({ status: 'idle', error: null })
-    setTimeout(() => send(lastUser.content), 50)
-  }
-
-  /* ── Clear chat ── */
-  const clearChat = () => {
-    abortRef.current?.abort()
-    setMessages([])
-    setChatState({ status: 'idle', error: null })
-    setInput('')
-    setInputRows(1)
-    setIsTyping(false)
-    // Re-add greeting
-    setTimeout(() => {
-      const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)]
-      setMessages([{ id: uid(), role: 'assistant', content: greeting, ts: Date.now() }])
-    }, 100)
-  }
-
-  /* ── Keyboard handler ── */
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      send()
+    } finally {
+      setLoading(false)
     }
   }
 
-  const isLoading       = chatState.status === 'loading'
-  const showSuggestions = messages.length <= 1 && !isLoading
-  const suggestions     = SUGGESTION_SETS[sugSet]
-
-  /* ══════════════════════════ RENDER ══════════════════════════ */
   return (
     <>
-      {/* ── Floating button ── */}
+      {/* ── Floating Button ── */}
       <button
         onClick={() => setOpen(o => !o)}
-        aria-label={open ? 'Close AI chat' : 'Open AI chat'}
+        aria-label="Open AI chat"
         style={{
-          position:   'fixed', bottom: '1.75rem', right: '1.75rem', zIndex: 9000,
-          width: 56,  height: 56, borderRadius: '50%', border: 'none',
-          background: open
-            ? 'rgba(30,30,40,0.95)'
-            : 'linear-gradient(135deg, #FF6200, #FF8C00)',
+          position: 'fixed', bottom: '1.75rem', right: '1.75rem', zIndex: 9000,
+          width: 56, height: 56, borderRadius: '50%', border: 'none',
+          background: 'linear-gradient(135deg, #FF6200, #FF8C00)',
           boxShadow: open
-            ? '0 0 0 2px rgba(255,98,0,0.3), 0 8px 24px rgba(0,0,0,0.5)'
-            : '0 4px 24px rgba(255,98,0,0.5), 0 0 0 1px rgba(255,140,0,0.3)',
-          cursor:    'pointer',
-          display:   'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'all 0.3s cubic-bezier(0.34,1.56,0.64,1)',
-          transform:  open ? 'scale(0.9) rotate(90deg)' : 'scale(1)',
+            ? '0 0 0 4px rgba(255,98,0,0.25), 0 8px 32px rgba(255,98,0,0.4)'
+            : '0 4px 24px rgba(255,98,0,0.45), 0 0 0 1px rgba(255,140,0,0.3)',
+          cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'all 0.25s cubic-bezier(0.34,1.56,0.64,1)',
+          transform: open ? 'scale(0.92) rotate(90deg)' : 'scale(1)',
         }}
       >
         {open
           ? <X style={{ width: 22, height: 22, color: 'white' }} />
           : <MessageCircle style={{ width: 22, height: 22, color: 'white' }} />
         }
-        {/* Unread dot */}
         {unread && !open && (
           <span style={{
-            position: 'absolute', top: 2, right: 2,
-            width: 13, height: 13, borderRadius: '50%',
-            background: '#FFB733',
-            border:  '2.5px solid var(--bg-void, #08080E)',
-            animation: 'unreadPulse 2s ease infinite',
-          }} />
-        )}
-        {/* Ripple when closed */}
-        {!open && (
-          <span style={{
-            position: 'absolute', inset: -4,
-            borderRadius: '50%',
-            border: '2px solid rgba(255,98,0,0.3)',
-            animation: 'ripple 2.5s ease-out infinite',
+            position: 'absolute', top: 3, right: 3,
+            width: 11, height: 11, borderRadius: '50%',
+            background: '#FFB733', border: '2px solid var(--bg-void)',
           }} />
         )}
       </button>
 
-      {/* ── Chat panel ── */}
+      {/* ── Chat Panel ── */}
       {open && (
         <div style={{
-          position:     'fixed',
-          bottom:       '5.5rem',
-          right:        '1.75rem',
-          zIndex:        8999,
-          width:        'min(380px, calc(100vw - 2rem))',
-          height:       'min(560px, calc(100vh - 8rem))',
-          display:      'flex',
-          flexDirection: 'column',
-          background:   'rgba(10,10,18,0.97)',
-          backdropFilter: 'blur(28px)',
-          border:       '1px solid rgba(255,140,0,0.18)',
-          borderRadius:  22,
-          boxShadow:    '0 28px 80px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,98,0,0.06)',
-          overflow:     'hidden',
-          animation:    'chatSlideUp 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+          position: 'fixed', bottom: '5.5rem', right: '1.75rem', zIndex: 8999,
+          width: 'min(360px, calc(100vw - 2rem))',
+          height: 'min(520px, calc(100vh - 8rem))',
+          display: 'flex', flexDirection: 'column',
+          background: 'rgba(12,12,20,0.96)',
+          backdropFilter: 'blur(24px)',
+          border: '1px solid rgba(255,140,0,0.18)',
+          borderRadius: 20,
+          boxShadow: '0 24px 64px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,98,0,0.08)',
+          overflow: 'hidden',
+          animation: 'chatSlideUp 0.28s cubic-bezier(0.34,1.56,0.64,1)',
         }}>
 
-          {/* ── Header ── */}
+          {/* Header */}
           <div style={{
-            padding:    '0.85rem 1rem',
+            padding: '0.9rem 1rem',
             borderBottom: '1px solid rgba(255,140,0,0.12)',
-            display:    'flex', alignItems: 'center', gap: '0.65rem',
-            background: 'linear-gradient(135deg, rgba(255,98,0,0.08), rgba(255,140,0,0.04))',
+            display: 'flex', alignItems: 'center', gap: '0.65rem',
+            background: 'rgba(255,98,0,0.06)',
             flexShrink: 0,
           }}>
-            {/* Avatar */}
             <div style={{
-              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-              background: 'linear-gradient(135deg, rgba(255,98,0,0.35), rgba(255,140,0,0.2))',
-              border:     '1.5px solid rgba(255,140,0,0.35)',
-              display:    'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow:  '0 0 12px rgba(255,98,0,0.2)',
+              width: 34, height: 34, borderRadius: '50%',
+              background: 'linear-gradient(135deg, rgba(255,98,0,0.3), rgba(255,140,0,0.2))',
+              border: '1px solid rgba(255,140,0,0.3)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
             }}>
               <Sparkles style={{ width: 16, height: 16, color: '#FFB733' }} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontWeight: 700, fontSize: '0.88rem', color: 'white', lineHeight: 1.2 }}>Roy AI</p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                <span style={{
-                  width: 6, height: 6, borderRadius: '50%',
-                  background: isLoading ? '#FFB733' : '#22c55e',
-                  animation:  isLoading ? 'statusPulse 1s ease infinite' : 'none',
-                }} />
-                <span style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.45)' }}>
-                  {isLoading ? 'Thinking…' : 'Powered by Gemini · Always on'}
-                </span>
-              </div>
+              <p style={{ fontWeight: 700, fontSize: '0.88rem', color: 'white', lineHeight: 1.2 }}>Roy AI Guide</p>
+              <p style={{ fontSize: '0.7rem', color: 'rgba(255,183,51,0.7)', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+                Online · Ask me anything
+              </p>
             </div>
-            {/* Actions */}
-            <button onClick={clearChat} title="New chat"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 5, color: 'rgba(255,255,255,0.3)', display: 'flex', borderRadius: 7, transition: 'color 0.15s' }}
-              onMouseOver={e => e.currentTarget.style.color='rgba(255,255,255,0.7)'}
-              onMouseOut={e => e.currentTarget.style.color='rgba(255,255,255,0.3)'}
-            >
-              <RefreshCw style={{ width: 14, height: 14 }} />
-            </button>
-            <button onClick={() => setOpen(false)} title="Minimize"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 5, color: 'rgba(255,255,255,0.3)', display: 'flex', borderRadius: 7, transition: 'color 0.15s' }}
-              onMouseOver={e => e.currentTarget.style.color='rgba(255,255,255,0.7)'}
-              onMouseOut={e => e.currentTarget.style.color='rgba(255,255,255,0.3)'}
-            >
-              <ChevronDown style={{ width: 15, height: 15 }} />
+            <button onClick={() => setOpen(false)} style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+              color: 'var(--text-muted)', display: 'flex', borderRadius: 6,
+            }}>
+              <Minimize2 style={{ width: 15, height: 15 }} />
             </button>
           </div>
 
-          {/* ── Messages ── */}
+          {/* Messages */}
           <div style={{
-            flex:        1,
-            overflowY:   'auto',
-            padding:     '0.85rem 0.9rem',
-            display:     'flex', flexDirection: 'column', gap: '0.6rem',
+            flex: 1, overflowY: 'auto', padding: '0.85rem',
+            display: 'flex', flexDirection: 'column', gap: '0.65rem',
             scrollbarWidth: 'thin',
-            scrollbarColor: 'rgba(255,140,0,0.15) transparent',
+            scrollbarColor: 'rgba(255,140,0,0.2) transparent',
           }}>
-
-            {messages.map((msg) => (
-              <div key={msg.id} style={{
-                display:    'flex',
+            {messages.map((msg, i) => (
+              <div key={i} style={{
+                display: 'flex',
                 justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                alignItems: 'flex-end',
-                gap:        '0.4rem',
-                animation:  'msgFadeIn 0.22s ease',
+                animation: 'msgFadeIn 0.2s ease',
               }}>
-                {/* AI avatar */}
-                {(msg.role === 'assistant' || msg.role === 'error') && (
+                {msg.role === 'assistant' && (
                   <div style={{
-                    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                    background: msg.role === 'error'
-                      ? 'rgba(239,68,68,0.2)'
-                      : 'linear-gradient(135deg, rgba(255,98,0,0.25), rgba(255,140,0,0.15))',
-                    border: `1px solid ${msg.role === 'error' ? 'rgba(239,68,68,0.3)' : 'rgba(255,140,0,0.25)'}`,
+                    width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                    background: 'linear-gradient(135deg, rgba(255,98,0,0.25), rgba(255,140,0,0.15))',
+                    border: '1px solid rgba(255,140,0,0.25)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: 2,
+                    marginRight: '0.45rem', marginTop: 2, alignSelf: 'flex-start',
                   }}>
-                    {msg.role === 'error'
-                      ? <AlertCircle style={{ width: 11, height: 11, color: '#f87171' }} />
-                      : <Film style={{ width: 11, height: 11, color: '#FF8C00' }} />
-                    }
+                    <Film style={{ width: 12, height: 12, color: '#FF8C00' }} />
                   </div>
                 )}
-
                 <div style={{
-                  maxWidth:  '80%',
-                  padding:   '0.65rem 0.9rem',
+                  maxWidth: '78%',
+                  padding: '0.6rem 0.85rem',
                   borderRadius: msg.role === 'user'
-                    ? '18px 18px 4px 18px'
-                    : '18px 18px 18px 4px',
+                    ? '16px 16px 4px 16px'
+                    : '16px 16px 16px 4px',
                   background: msg.role === 'user'
-                    ? 'linear-gradient(135deg, rgba(255,98,0,0.28), rgba(255,140,0,0.18))'
-                    : msg.role === 'error'
-                    ? 'rgba(239,68,68,0.08)'
+                    ? 'linear-gradient(135deg, rgba(255,98,0,0.3), rgba(255,140,0,0.2))'
                     : 'rgba(255,255,255,0.06)',
                   border: msg.role === 'user'
-                    ? '1px solid rgba(255,140,0,0.32)'
-                    : msg.role === 'error'
-                    ? '1px solid rgba(239,68,68,0.2)'
-                    : '1px solid rgba(255,255,255,0.07)',
-                  fontSize:   '0.84rem',
-                  lineHeight: 1.6,
-                  color: msg.role === 'user'
-                    ? 'rgba(255,255,255,0.95)'
-                    : msg.role === 'error'
-                    ? '#fca5a5'
-                    : 'rgba(220,220,235,0.9)',
+                    ? '1px solid rgba(255,140,0,0.35)'
+                    : '1px solid rgba(255,255,255,0.08)',
+                  fontSize: '0.84rem',
+                  lineHeight: 1.55,
+                  color: msg.role === 'user' ? 'white' : 'var(--text-secondary, #C8C8D8)',
                   whiteSpace: 'pre-wrap',
-                  wordBreak:  'break-word',
+                  wordBreak: 'break-word',
                 }}>
                   {msg.content}
-                  {/* Retry button on error */}
-                  {msg.role === 'error' && (
-                    <button onClick={retry}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.5rem', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8, padding: '0.3rem 0.65rem', color: '#fca5a5', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer', fontFamily: 'Outfit,sans-serif' }}>
-                      <RefreshCw style={{ width: 11, height: 11 }} /> Retry
-                    </button>
-                  )}
                 </div>
-
-                {/* User avatar */}
-                {msg.role === 'user' && (
-                  <div style={{
-                    width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
-                    background: 'linear-gradient(135deg, rgba(255,98,0,0.4), rgba(255,140,0,0.25))',
-                    border: '1px solid rgba(255,140,0,0.3)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    marginBottom: 2,
-                    fontSize: '0.65rem', fontWeight: 800, color: '#FFB733', fontFamily: 'Outfit,sans-serif',
-                  }}>
-                    U
-                  </div>
-                )}
               </div>
             ))}
 
-            {/* Typing indicator */}
-            {(isLoading || isTyping) && (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: '0.4rem', animation: 'msgFadeIn 0.2s ease' }}>
-                <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,98,0,0.25), rgba(255,140,0,0.15))', border: '1px solid rgba(255,140,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Film style={{ width: 11, height: 11, color: '#FF8C00' }} />
+            {loading && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                <div style={{
+                  width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                  background: 'linear-gradient(135deg, rgba(255,98,0,0.25), rgba(255,140,0,0.15))',
+                  border: '1px solid rgba(255,140,0,0.25)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <Film style={{ width: 12, height: 12, color: '#FF8C00' }} />
                 </div>
-                <div style={{ padding: '0.65rem 0.9rem', borderRadius: '18px 18px 18px 4px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: '0.28rem', alignItems: 'center' }}>
+                <div style={{
+                  padding: '0.6rem 0.85rem',
+                  borderRadius: '16px 16px 16px 4px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  display: 'flex', gap: '0.3rem', alignItems: 'center',
+                }}>
                   {[0,1,2].map(i => (
-                    <span key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgba(255,140,0,0.7)', animation: `dotBounce 1.3s ease-in-out ${i * 0.2}s infinite`, display: 'inline-block' }} />
+                    <span key={i} style={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      background: 'rgba(255,140,0,0.6)',
+                      animation: `dotBounce 1.2s ease-in-out ${i * 0.18}s infinite`,
+                      display: 'inline-block',
+                    }} />
                   ))}
                 </div>
               </div>
             )}
-
             <div ref={bottomRef} />
           </div>
 
-          {/* ── Suggestions ── */}
-          {showSuggestions && (
-            <div style={{ padding: '0 0.9rem 0.55rem', display: 'flex', flexWrap: 'wrap', gap: '0.38rem', flexShrink: 0 }}>
-              {suggestions.map(s => (
-                <button key={s} onClick={() => send(s)}
-                  style={{ padding: '0.28rem 0.7rem', borderRadius: 9999, background: 'rgba(255,98,0,0.09)', border: '1px solid rgba(255,140,0,0.2)', color: 'rgba(255,183,51,0.8)', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'Outfit,sans-serif' }}
-                  onMouseOver={e => { e.currentTarget.style.background='rgba(255,98,0,0.2)'; e.currentTarget.style.borderColor='rgba(255,140,0,0.4)' }}
-                  onMouseOut={e => { e.currentTarget.style.background='rgba(255,98,0,0.09)'; e.currentTarget.style.borderColor='rgba(255,140,0,0.2)' }}
+          {/* Suggestions (only when just greeting) */}
+          {messages.length <= 1 && !loading && (
+            <div style={{
+              padding: '0 0.85rem 0.6rem',
+              display: 'flex', flexWrap: 'wrap', gap: '0.4rem', flexShrink: 0,
+            }}>
+              {SUGGESTIONS.map(s => (
+                <button key={s} onClick={() => send(s)} style={{
+                  padding: '0.3rem 0.7rem', borderRadius: 9999,
+                  background: 'rgba(255,98,0,0.1)', border: '1px solid rgba(255,140,0,0.22)',
+                  color: 'rgba(255,183,51,0.85)', fontSize: '0.74rem', fontWeight: 600,
+                  cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'Outfit,sans-serif',
+                }}
+                  onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,98,0,0.18)'; e.currentTarget.style.borderColor = 'rgba(255,140,0,0.4)' }}
+                  onMouseOut={e => { e.currentTarget.style.background = 'rgba(255,98,0,0.1)'; e.currentTarget.style.borderColor = 'rgba(255,140,0,0.22)' }}
                 >
                   {s}
                 </button>
@@ -429,105 +255,67 @@ export function AIChatbot() {
             </div>
           )}
 
-          {/* ── Input area ── */}
+          {/* Input */}
           <div style={{
-            padding:    '0.65rem 0.8rem',
-            borderTop:  '1px solid rgba(255,255,255,0.06)',
-            display:    'flex', gap: '0.5rem', flexShrink: 0,
-            background: 'rgba(255,255,255,0.015)',
-            alignItems: 'flex-end',
+            padding: '0.7rem 0.85rem',
+            borderTop: '1px solid rgba(255,140,0,0.1)',
+            display: 'flex', gap: '0.5rem', flexShrink: 0,
+            background: 'rgba(255,255,255,0.02)',
           }}>
-            <textarea
+            <input
               ref={inputRef}
               value={input}
-              rows={inputRows}
-              onChange={handleInputChange}
-              onKeyDown={onKeyDown}
-              disabled={isLoading}
-              placeholder={isLoading ? 'Roy AI is thinking…' : 'Ask about movies, shows, recommendations…'}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+              placeholder="Ask about movies…"
               style={{
-                flex:       1,
-                background: 'rgba(255,255,255,0.05)',
-                border:     '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 14,
-                padding:    '0.6rem 0.85rem',
-                color:      'white',
-                fontSize:   '0.84rem',
-                outline:    'none',
+                flex: 1, background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 12, padding: '0.6rem 0.85rem',
+                color: 'white', fontSize: '0.85rem', outline: 'none',
                 fontFamily: 'Outfit,sans-serif',
-                resize:     'none',
-                lineHeight: 1.55,
-                transition: 'border-color 0.2s, background 0.2s',
-                opacity:    isLoading ? 0.6 : 1,
-                cursor:     isLoading ? 'not-allowed' : 'text',
+                transition: 'border-color 0.2s',
               }}
-              onFocus={e => { e.target.style.borderColor='rgba(255,140,0,0.5)'; e.target.style.background='rgba(255,255,255,0.07)' }}
-              onBlur={e  => { e.target.style.borderColor='rgba(255,255,255,0.1)'; e.target.style.background='rgba(255,255,255,0.05)' }}
+              onFocus={e => e.target.style.borderColor = 'rgba(255,140,0,0.45)'}
+              onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
             />
             <button
               onClick={() => send()}
-              disabled={!input.trim() || isLoading}
-              title={isLoading ? 'Waiting for response…' : 'Send (Enter)'}
+              disabled={!input.trim() || loading}
               style={{
-                width:      40,
-                height:     40,
-                borderRadius: 13,
-                border:     'none',
-                flexShrink: 0,
-                background: input.trim() && !isLoading
+                width: 38, height: 38, borderRadius: 11, border: 'none', flexShrink: 0,
+                background: input.trim() && !loading
                   ? 'linear-gradient(135deg, #FF6200, #FF8C00)'
-                  : 'rgba(255,255,255,0.06)',
-                cursor:     input.trim() && !isLoading ? 'pointer' : 'not-allowed',
-                display:    'flex', alignItems: 'center', justifyContent: 'center',
+                  : 'rgba(255,255,255,0.07)',
+                cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
                 transition: 'all 0.2s',
-                boxShadow:  input.trim() && !isLoading ? '0 2px 14px rgba(255,98,0,0.4)' : 'none',
-                transform:  input.trim() && !isLoading ? 'scale(1)' : 'scale(0.95)',
+                boxShadow: input.trim() && !loading ? '0 2px 12px rgba(255,98,0,0.35)' : 'none',
               }}
             >
-              {isLoading
-                ? <Loader2 style={{ width: 16, height: 16, color: 'rgba(255,255,255,0.5)', animation: 'spin 1s linear infinite' }} />
-                : <Send style={{ width: 15, height: 15, color: input.trim() ? 'white' : 'rgba(255,255,255,0.25)', marginLeft: 1 }} />
+              {loading
+                ? <Loader2 style={{ width: 16, height: 16, color: 'white', animation: 'spin 1s linear infinite' }} />
+                : <Send style={{ width: 16, height: 16, color: input.trim() ? 'white' : 'rgba(255,255,255,0.3)' }} />
               }
             </button>
-          </div>
-
-          {/* Powered by footer */}
-          <div style={{ textAlign: 'center', paddingBottom: '0.4rem', flexShrink: 0 }}>
-            <span style={{ fontSize: '0.62rem', color: 'rgba(255,255,255,0.18)', fontFamily: 'Outfit,sans-serif', letterSpacing: '0.04em' }}>
-              Powered by Google Gemini
-            </span>
           </div>
         </div>
       )}
 
       <style jsx>{`
         @keyframes chatSlideUp {
-          from { opacity: 0; transform: translateY(20px) scale(0.95); }
-          to   { opacity: 1; transform: translateY(0)   scale(1);    }
+          from { opacity: 0; transform: translateY(16px) scale(0.96); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         @keyframes msgFadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to   { opacity: 1; transform: translateY(0);   }
+          from { opacity: 0; transform: translateY(6px); }
+          to   { opacity: 1; transform: translateY(0); }
         }
         @keyframes dotBounce {
-          0%, 80%, 100% { transform: scale(0.65); opacity: 0.45; }
-          40%           { transform: scale(1.1);  opacity: 1;    }
+          0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
+          40%           { transform: scale(1);   opacity: 1; }
         }
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-        @keyframes ripple {
-          0%   { transform: scale(1);    opacity: 0.5; }
-          100% { transform: scale(1.7);  opacity: 0;   }
-        }
-        @keyframes unreadPulse {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(255,183,51,0.5); }
-          50%      { box-shadow: 0 0 0 5px rgba(255,183,51,0); }
-        }
-        @keyframes statusPulse {
-          0%, 100% { opacity: 1; }
-          50%      { opacity: 0.4; }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
     </>
   )
