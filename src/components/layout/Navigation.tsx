@@ -1,10 +1,14 @@
+// src/components/layout/Navigation.tsx
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter, usePathname } from 'next/navigation'
-import { Search, Menu, X, LogOut, Settings, Film, Heart, ChevronDown, User, Clock, TrendingUp, Star } from 'lucide-react'
+import { 
+  Search, Menu, X, LogOut, Settings, Film, Heart, ChevronDown, User, 
+  Clock, TrendingUp, Star, Home, Clapperboard, Tv, Sparkles
+} from 'lucide-react'
 import { useAuth } from '@/providers/AuthProvider'
 import { createSupabaseBrowserClient } from '@/lib/supabase'
 
@@ -52,29 +56,29 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export function Navigation() {
   const { user, loading, signOut } = useAuth()
-  const router   = useRouter()
+  const router = useRouter()
   const pathname = usePathname()
   const { theme, toggle } = useTheme()
-  const [userRole,   setUserRole]   = useState<string | null>(null)
-  const [avatarUrl,  setAvatarUrl]  = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<string | null>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
 
-  const [menuOpen,    setMenuOpen]    = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
-  const [searchOpen,  setSearchOpen]  = useState(false)
-  const [searchQ,     setSearchQ]     = useState('')
-  const [scrolled,    setScrolled]    = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQ, setSearchQ] = useState('')
+  const [scrolled, setScrolled] = useState(false)
 
   // Live search state
-  const [suggestions,    setSuggestions]    = useState<MovieSuggestion[]>([])
+  const [suggestions, setSuggestions] = useState<MovieSuggestion[]>([])
   const [suggestLoading, setSuggestLoading] = useState(false)
-  const [activeIndex,    setActiveIndex]    = useState(-1)
-  const [showDropdown,   setShowDropdown]   = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const [showDropdown, setShowDropdown] = useState(false)
   const [recentSearches, setRecentSearches] = useState<string[]>([])
 
-  const profileRef    = useRef<HTMLDivElement>(null)
-  const searchRef     = useRef<HTMLInputElement>(null)
+  const profileRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
   const searchWrapRef = useRef<HTMLDivElement>(null)
-  const debouncedQ    = useDebounce(searchQ, 220)
+  const debouncedQ = useDebounce(searchQ, 220)
 
   /* ── Scroll ── */
   useEffect(() => {
@@ -95,7 +99,7 @@ export function Navigation() {
       })
   }, [user])
 
-  /* ── Close profile dropdown on outside click ── */
+  /* ── Close dropdowns on outside click ── */
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) setProfileOpen(false)
@@ -185,7 +189,7 @@ export function Navigation() {
     router.push(`/watch/${slug}`)
   }, [router, saveRecentSearch])
 
-  /* ── Submit search (Enter key / form submit) ── */
+  /* ── Submit search ── */
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
     const q = activeIndex >= 0 && suggestions[activeIndex]
@@ -243,12 +247,25 @@ export function Navigation() {
   const isActive = (href: string) =>
     href === '/' ? pathname === '/' : pathname?.startsWith(href)
 
+  // Desktop nav links
   const navLinks = [
-    { href: '/',        label: 'Home'    },
-    { href: '/movies',  label: 'Movies'  },
-    { href: '/series',  label: 'Series'  },
+    { href: '/', label: 'Home' },
+    { href: '/movies', label: 'Movies' },
+    { href: '/series', label: 'Series' },
+    ...(user ? [{ href: '/favorites', label: 'Favorites' }] : []),
     ...(user ? [{ href: '/creator', label: 'Studio' }] : []),
     ...(userRole === 'admin' ? [{ href: '/admin', label: 'Admin' }] : []),
+  ]
+
+  // Mobile nav links with icons
+  const mobileNavLinks = [
+    { href: '/', label: 'Home', icon: Home },
+    { href: '/movies', label: 'Movies', icon: Clapperboard },
+    { href: '/series', label: 'Series', icon: Tv },
+    ...(user ? [{ href: '/favorites', label: 'Favorites', icon: Heart }] : []),
+    ...(user ? [{ href: '/profile', label: 'My Profile', icon: User }] : []),
+    ...(user ? [{ href: '/creator', label: 'Creator Studio', icon: Sparkles }] : []),
+    ...(userRole === 'admin' ? [{ href: '/admin', label: 'Admin Panel', icon: Settings }] : []),
   ]
 
   const showSuggestions = showDropdown && (
@@ -288,8 +305,8 @@ export function Navigation() {
             </span>
           </Link>
 
-          {/* ── Desktop nav ── */}
-          <nav className="nav-links" id="re-desktop-nav" style={{ display: 'none' }}>
+          {/* ── Desktop Navigation Links ── */}
+          <nav className="nav-links-desktop">
             {navLinks.map(({ href, label }) => (
               <Link key={href} href={href} className={`nav-link${isActive(href) ? ' active' : ''}`}>
                 {label}
@@ -297,7 +314,7 @@ export function Navigation() {
             ))}
           </nav>
 
-          {/* ── Right actions ── */}
+          {/* ── Right Actions ── */}
           <div className="nav-actions">
 
             {/* Search icon */}
@@ -305,18 +322,18 @@ export function Navigation() {
               <Search style={{ width: 16, height: 16 }} />
             </button>
 
-            {/* Theme toggle */}
-            <button className="theme-toggle" onClick={toggle} aria-label="Toggle theme" title={theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}>
+            {/* Theme toggle - Desktop only */}
+            <button className="theme-toggle desktop-only" onClick={toggle} aria-label="Toggle theme" title={theme === 'dark' ? 'Switch to Light' : 'Switch to Dark'}>
               <span className="theme-toggle-knob">
                 {theme === 'dark' ? '🌙' : '☀️'}
               </span>
             </button>
 
-            {/* Auth */}
+            {/* Auth - Desktop only */}
             {loading ? (
-              <div className="skeleton" style={{ width: 88, height: 34, borderRadius: 99 }} />
+              <div className="skeleton desktop-only" style={{ width: 88, height: 34, borderRadius: 99 }} />
             ) : user ? (
-              <div ref={profileRef} style={{ position: 'relative' }}>
+              <div ref={profileRef} style={{ position: 'relative' }} className="desktop-only">
                 <button
                   onClick={() => setProfileOpen(v => !v)}
                   style={{
@@ -344,6 +361,7 @@ export function Navigation() {
                   <ChevronDown style={{ width: 13, height: 13, color: 'var(--text-muted)', transform: profileOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s', flexShrink: 0 }} />
                 </button>
 
+                {/* Profile Dropdown */}
                 {profileOpen && (
                   <div style={{
                     position: 'absolute', top: 'calc(100% + 10px)', right: 0, width: 225,
@@ -370,13 +388,13 @@ export function Navigation() {
                     </div>
 
                     {[
-                      { href: '/profile',   Icon: User,     label: 'My Profile',    show: true },
-                      { href: '/favorites', Icon: Heart,    label: 'Favorites',      show: true },
-                      { href: '/creator',   Icon: Film,     label: 'Creator Studio', show: true },
-                      { href: '/admin',     Icon: Settings, label: 'Admin Panel',    show: userRole === 'admin' },
-                    ].filter(item => item.show).map(({ href, Icon, label }) => (
+                      { href: '/profile', Icon: User, label: 'My Profile' },
+                      { href: '/favorites', Icon: Heart, label: 'Favorites' },
+                      { href: '/creator', Icon: Film, label: 'Creator Studio' },
+                      ...(userRole === 'admin' ? [{ href: '/admin', Icon: Settings, label: 'Admin Panel' }] : []),
+                    ].map(({ href, Icon, label }) => (
                       <Link key={href} href={href} style={{ textDecoration: 'none' }}>
-                        <DropItem Icon={Icon} label={label} onClick={() => setProfileOpen(false)} />
+                        <DropItem Icon={Icon} label={label} onClick={() => setProfileOpen(false)} active={isActive(href)} />
                       </Link>
                     ))}
 
@@ -406,22 +424,22 @@ export function Navigation() {
                 )}
               </div>
             ) : (
-              <Link href="/login">
+              <Link href="/login" className="desktop-only" style={{ textDecoration: 'none' }}>
                 <button className="btn-fire" style={{ padding: '0.52rem 1.3rem', fontSize: '0.855rem' }}>
                   Sign In
                 </button>
               </Link>
             )}
 
-            {/* Hamburger */}
-            <button className="icon-btn" id="re-hamburger" onClick={() => setMenuOpen(v => !v)} aria-label="Menu">
-              {menuOpen ? <X style={{ width: 17, height: 17 }} /> : <Menu style={{ width: 17, height: 17 }} />}
+            {/* ═══ HAMBURGER - Mobile Only ═══ */}
+            <button className="icon-btn mobile-hamburger" onClick={() => setMenuOpen(v => !v)} aria-label="Menu">
+              {menuOpen ? <X style={{ width: 18, height: 18 }} /> : <Menu style={{ width: 18, height: 18 }} />}
             </button>
           </div>
         </div>
 
         {/* ════════════════════════════════════
-            SEARCH OVERLAY + LIVE SUGGESTIONS
+            SEARCH OVERLAY
         ════════════════════════════════════ */}
         {searchOpen && (
           <div style={{
@@ -429,26 +447,16 @@ export function Navigation() {
             background: 'var(--nav-bg)', backdropFilter: 'blur(24px)',
             borderBottom: showSuggestions ? 'none' : '1px solid var(--glass-border)',
             padding: '1rem clamp(1rem, 4vw, 2.5rem)',
-            animation: 'fadeIn 0.18s ease',
-            zIndex: 150,
+            animation: 'fadeIn 0.18s ease', zIndex: 150,
           }}>
             <div ref={searchWrapRef} style={{ maxWidth: 620, margin: '0 auto', position: 'relative' }}>
-
-              {/* Search input */}
               <form onSubmit={handleSearch}>
-                <div
-                  className="search-bar"
-                  style={{
-                    borderRadius: showSuggestions ? '14px 14px 0 0' : 14,
-                    transition: 'border-radius 0.15s',
-                    borderBottom: showSuggestions ? '1px solid rgba(255,140,0,0.15)' : undefined,
-                  }}
-                >
-                  <Search style={{
-                    width: 17, height: 17,
-                    color: suggestLoading ? 'var(--brand-mid)' : 'var(--text-muted)',
-                    flexShrink: 0, transition: 'color 0.2s',
-                  }} />
+                <div className="search-bar" style={{
+                  borderRadius: showSuggestions ? '14px 14px 0 0' : 14,
+                  transition: 'border-radius 0.15s',
+                  borderBottom: showSuggestions ? '1px solid rgba(255,140,0,0.15)' : undefined,
+                }}>
+                  <Search style={{ width: 17, height: 17, color: suggestLoading ? 'var(--brand-mid)' : 'var(--text-muted)', flexShrink: 0, transition: 'color 0.2s' }} />
                   <input
                     ref={searchRef}
                     className="search-input"
@@ -461,18 +469,13 @@ export function Navigation() {
                     autoComplete="off"
                     spellCheck={false}
                   />
-                  {/* Spinner */}
                   {suggestLoading && (
                     <div style={{
-                      width: 16, height: 16,
-                      border: '2px solid rgba(255,140,0,0.2)',
-                      borderTopColor: 'var(--brand-mid)',
-                      borderRadius: '50%',
-                      animation: 're-spin 0.6s linear infinite',
-                      flexShrink: 0,
+                      width: 16, height: 16, border: '2px solid rgba(255,140,0,0.2)',
+                      borderTopColor: 'var(--brand-mid)', borderRadius: '50%',
+                      animation: 're-spin 0.6s linear infinite', flexShrink: 0,
                     }} />
                   )}
-                  {/* Clear */}
                   {searchQ && !suggestLoading && (
                     <button
                       type="button"
@@ -491,14 +494,11 @@ export function Navigation() {
                   position: 'absolute', top: '100%', left: 0, right: 0,
                   background: 'var(--nav-bg)', backdropFilter: 'blur(28px)',
                   border: '1px solid var(--glass-border)', borderTop: 'none',
-                  borderRadius: '0 0 16px 16px',
-                  boxShadow: '0 28px 56px rgba(0,0,0,0.65)',
-                  overflow: 'hidden', zIndex: 160,
-                  animation: 'reSlideDown 0.18s ease',
+                  borderRadius: '0 0 16px 16px', boxShadow: '0 28px 56px rgba(0,0,0,0.65)',
+                  overflow: 'hidden', zIndex: 160, animation: 'reSlideDown 0.18s ease',
                   maxHeight: 420, overflowY: 'auto',
                 }}>
-
-                  {/* ── Recent searches (empty input) ── */}
+                  {/* Recent searches */}
                   {!searchQ.trim() && recentSearches.length > 0 && (
                     <>
                       <div style={{ padding: '0.75rem 1rem 0.35rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -533,17 +533,15 @@ export function Navigation() {
                     </>
                   )}
 
-                  {/* ── No results ── */}
+                  {/* No results */}
                   {searchQ.trim() && suggestions.length === 0 && !suggestLoading && (
                     <div style={{ padding: '1.5rem 1rem', textAlign: 'center' }}>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 4 }}>
-                        No results for
-                      </p>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: 4 }}>No results for</p>
                       <p style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>&ldquo;{searchQ}&rdquo;</p>
                     </div>
                   )}
 
-                  {/* ── Movie results ── */}
+                  {/* Movie results */}
                   {suggestions.map((movie, i) => (
                     <button
                       key={movie.id}
@@ -560,38 +558,24 @@ export function Navigation() {
                         fontFamily: 'Outfit,sans-serif',
                       }}
                     >
-                      {/* Poster */}
                       <div style={{
                         width: 36, height: 52, borderRadius: 6, overflow: 'hidden', flexShrink: 0,
                         background: 'var(--bg-card)', border: '1px solid var(--glass-border)',
                       }}>
                         {movie.poster_url ? (
-                          <img
-                            src={movie.poster_url}
-                            alt={movie.title}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          />
+                          <img src={movie.poster_url} alt={movie.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
                           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <Film size={13} style={{ color: 'var(--text-muted)' }} />
                           </div>
                         )}
                       </div>
-
-                      {/* Info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)',
-                          marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                        }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {highlight(movie.title, searchQ)}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-                          {movie.release_year && (
-                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                              {movie.release_year}
-                            </span>
-                          )}
+                          {movie.release_year && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{movie.release_year}</span>}
                           {movie.genre?.[0] && (
                             <span style={{
                               fontSize: '0.67rem', padding: '1px 7px', borderRadius: 99,
@@ -608,21 +592,15 @@ export function Navigation() {
                           )}
                         </div>
                       </div>
-
-                      {/* Trending badge */}
                       {movie.is_trending && (
-                        <span style={{
-                          display: 'flex', alignItems: 'center', gap: 3,
-                          fontSize: '0.67rem', color: 'var(--brand-mid)',
-                          fontWeight: 700, flexShrink: 0,
-                        }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.67rem', color: 'var(--brand-mid)', fontWeight: 700, flexShrink: 0 }}>
                           <TrendingUp size={11} /> Trending
                         </span>
                       )}
                     </button>
                   ))}
 
-                  {/* ── View all results ── */}
+                  {/* View all results */}
                   {searchQ.trim() && suggestions.length > 0 && (
                     <button
                       onClick={() => {
@@ -631,12 +609,10 @@ export function Navigation() {
                         setSearchOpen(false)
                       }}
                       style={{
-                        width: '100%', padding: '0.8rem 1rem',
-                        border: 'none', borderTop: '1px solid var(--glass-border)',
-                        background: 'none',
-                        color: 'var(--brand-mid)', cursor: 'pointer',
-                        fontSize: '0.84rem', fontWeight: 600,
-                        fontFamily: 'Outfit,sans-serif',
+                        width: '100%', padding: '0.8rem 1rem', border: 'none',
+                        borderTop: '1px solid var(--glass-border)', background: 'none',
+                        color: 'var(--brand-mid)', cursor: 'pointer', fontSize: '0.84rem',
+                        fontWeight: 600, fontFamily: 'Outfit,sans-serif',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.45rem',
                         transition: 'background 0.15s',
                       }}
@@ -654,46 +630,137 @@ export function Navigation() {
         )}
       </header>
 
-      {/* ── Mobile full-screen menu ── */}
+      {/* ══════════════════════════════════════════════
+          MOBILE FULL-SCREEN MENU
+      ══════════════════════════════════════════════ */}
       {menuOpen && (
         <div style={{
           position: 'fixed', inset: 0, zIndex: 99,
           background: 'var(--nav-bg)', backdropFilter: 'blur(28px)',
           display: 'flex', flexDirection: 'column',
-          padding: '74px 1.5rem 2rem',
+          padding: '80px 1.5rem 2rem',
           animation: 'fadeIn 0.2s ease', overflowY: 'auto',
         }}>
-          <div style={{ position: 'absolute', top: '15%', left: '50%', transform: 'translateX(-50%)', width: 380, height: 380, background: 'radial-gradient(circle, var(--glow-sm) 0%, transparent 70%)', pointerEvents: 'none' }} />
+          {/* Background glow */}
+          <div style={{
+            position: 'absolute', top: '15%', left: '50%', transform: 'translateX(-50%)',
+            width: 350, height: 350,
+            background: 'radial-gradient(circle, var(--glow-sm) 0%, transparent 70%)',
+            pointerEvents: 'none',
+          }} />
 
-          <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', marginBottom: '2rem' }}>
-            {navLinks.map(({ href, label }, i) => (
+          {/* User Card */}
+          {user && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '1rem',
+              padding: '1.25rem', borderRadius: 18,
+              background: 'linear-gradient(135deg, rgba(255,98,0,0.1), rgba(255,183,51,0.05))',
+              border: '1px solid rgba(255,140,0,0.15)',
+              marginBottom: '1.75rem',
+              animation: 'fadeInUp 0.3s ease both',
+            }}>
+              <div style={{
+                width: 52, height: 52, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+                background: 'linear-gradient(135deg, var(--brand-core), var(--brand-gold))',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '1.3rem', fontWeight: 800, color: 'white',
+                boxShadow: '0 0 25px var(--glow-sm)',
+              }}>
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : getUserInitial()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: 2 }}>{getUserName()}</p>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Nav Links */}
+          <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1.5rem' }}>
+            {mobileNavLinks.map(({ href, label, icon: Icon }, i) => (
               <Link
-                key={href} href={href}
+                key={href}
+                href={href}
                 onClick={() => setMenuOpen(false)}
                 style={{
-                  display: 'block', padding: '0.95rem 1.2rem', borderRadius: 14,
-                  textDecoration: 'none', fontSize: '1.25rem', fontWeight: 700,
+                  display: 'flex', alignItems: 'center', gap: '1rem',
+                  padding: '1rem 1.25rem', borderRadius: 14,
+                  textDecoration: 'none', fontSize: '1.05rem', fontWeight: 600,
                   color: isActive(href) ? 'var(--brand-gold)' : 'var(--text-secondary)',
-                  background: isActive(href) ? 'rgba(255,140,0,0.09)' : 'transparent',
+                  background: isActive(href) ? 'rgba(255,140,0,0.1)' : 'transparent',
+                  border: `1px solid ${isActive(href) ? 'rgba(255,140,0,0.2)' : 'transparent'}`,
                   transition: 'all 0.2s',
-                  animation: `fadeInUp 0.3s ${i * 0.07}s both`,
+                  animation: `fadeInUp 0.3s ${i * 0.05}s both`,
                 }}
-              >{label}</Link>
+              >
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12,
+                  background: isActive(href) ? 'linear-gradient(135deg, rgba(255,98,0,0.2), rgba(255,183,51,0.1))' : 'rgba(255,255,255,0.04)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: `1px solid ${isActive(href) ? 'rgba(255,140,0,0.25)' : 'rgba(255,255,255,0.06)'}`,
+                }}>
+                  <Icon size={20} style={{ color: isActive(href) ? 'var(--brand-mid)' : 'var(--text-muted)' }} />
+                </div>
+                {label}
+              </Link>
             ))}
           </nav>
 
-          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1.5rem' }}>
-            <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-              {theme === 'dark' ? 'Dark mode' : 'Light mode'}
-            </span>
-            <button className="theme-toggle" onClick={toggle}>
+          {/* Divider */}
+          <div style={{ height: 1, background: 'var(--glass-border)', margin: '0.5rem 0 1.5rem' }} />
+
+          {/* Theme Toggle */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '1rem 1.25rem', borderRadius: 14,
+            background: 'rgba(255,255,255,0.03)', border: '1px solid var(--glass-border)',
+            marginBottom: '1rem',
+            animation: `fadeInUp 0.3s ${mobileNavLinks.length * 0.05}s both`,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 12,
+                background: 'rgba(255,255,255,0.04)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '1px solid rgba(255,255,255,0.06)',
+                fontSize: '1.1rem',
+              }}>
+                {theme === 'dark' ? '🌙' : '☀️'}
+              </div>
+              <span style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+                {theme === 'dark' ? 'Dark Mode' : 'Light Mode'}
+              </span>
+            </div>
+            <button className="theme-toggle" onClick={toggle} style={{ flexShrink: 0 }}>
               <span className="theme-toggle-knob">{theme === 'dark' ? '🌙' : '☀️'}</span>
             </button>
           </div>
 
-          {!user && (
-            <Link href="/login" onClick={() => setMenuOpen(false)}>
-              <button className="btn-fire" style={{ width: '100%', justifyContent: 'center', padding: '1rem' }}>
+          {/* Sign out / Sign in */}
+          {user ? (
+            <button
+              onClick={async () => {
+                await signOut()
+                setMenuOpen(false)
+                router.push('/')
+                router.refresh()
+              }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.65rem',
+                padding: '1rem', borderRadius: 14, width: '100%',
+                background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)',
+                color: '#f87171', cursor: 'pointer', fontSize: '1rem', fontWeight: 600,
+                fontFamily: 'Outfit,sans-serif',
+                animation: `fadeInUp 0.3s ${(mobileNavLinks.length + 1) * 0.05}s both`,
+              }}
+            >
+              <LogOut size={20} /> Sign Out
+            </button>
+          ) : (
+            <Link href="/login" onClick={() => setMenuOpen(false)} style={{ textDecoration: 'none', animation: `fadeInUp 0.3s ${(mobileNavLinks.length + 1) * 0.05}s both` }}>
+              <button className="btn-fire" style={{ width: '100%', justifyContent: 'center', padding: '1rem', fontSize: '1rem' }}>
                 Sign In
               </button>
             </Link>
@@ -701,37 +768,74 @@ export function Navigation() {
         </div>
       )}
 
+      {/* ═══ STYLES ═══ */}
       <style jsx global>{`
-        @media (min-width: 768px) {
-          #re-desktop-nav { display: flex !important; }
-          #re-hamburger   { display: none  !important; }
+        /* Desktop nav links - visible on desktop */
+        .nav-links-desktop {
+          display: flex;
+          align-items: center;
+          gap: 0.2rem;
         }
+        
+        /* Desktop only elements */
+        .desktop-only {
+          display: flex !important;
+        }
+        
+        /* Mobile hamburger - hidden on desktop */
+        .mobile-hamburger {
+          display: none !important;
+        }
+        
+        /* Mobile: hide desktop nav, show hamburger */
+        @media (max-width: 768px) {
+          .nav-links-desktop {
+            display: none !important;
+          }
+          .desktop-only {
+            display: none !important;
+          }
+          .mobile-hamburger {
+            display: flex !important;
+          }
+        }
+        
         @keyframes reSlideDown {
           from { opacity: 0; transform: translateY(-8px); }
-          to   { opacity: 1; transform: translateY(0); }
+          to { opacity: 1; transform: translateY(0); }
         }
         @keyframes re-spin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(16px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </>
   )
 }
 
-function DropItem({ Icon, label, onClick }: { Icon: any; label: string; onClick?: () => void }) {
+function DropItem({ Icon, label, onClick, active }: { Icon: any; label: string; onClick?: () => void; active?: boolean }) {
   return (
     <div
       onClick={onClick}
       style={{
         display: 'flex', alignItems: 'center', gap: '0.55rem',
         padding: '0.6rem 0.7rem', borderRadius: 10,
-        color: 'var(--text-secondary)', cursor: 'pointer',
-        fontSize: '0.84rem', fontWeight: 500, transition: 'background 0.15s, color 0.15s',
+        color: active ? 'var(--brand-gold)' : 'var(--text-secondary)',
+        background: active ? 'rgba(255,140,0,0.08)' : 'transparent',
+        cursor: 'pointer', fontSize: '0.84rem', fontWeight: 500,
+        transition: 'background 0.15s, color 0.15s',
       }}
-      onMouseOver={e => { e.currentTarget.style.background = 'rgba(255,140,0,0.07)'; e.currentTarget.style.color = 'var(--text-primary)' }}
-      onMouseOut={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}
+      onMouseOver={e => { if (!active) { e.currentTarget.style.background = 'rgba(255,140,0,0.07)'; e.currentTarget.style.color = 'var(--text-primary)' }}}
+      onMouseOut={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-secondary)' }}}
     >
-      <span style={{ color: 'var(--brand-mid)', opacity: 0.85 }}><Icon size={15} /></span>
+      <span style={{ color: active ? 'var(--brand-mid)' : 'var(--brand-mid)', opacity: 0.85 }}><Icon size={15} /></span>
       {label}
     </div>
   )
